@@ -1,2 +1,2 @@
 # bblog
-Activity logger project written in Go
+Baby's activity logger project written in Go
