@@ -58,7 +58,7 @@ func createTables() {
 			is_deleted BOOL NOT NULL DEFAULT FALSE,
 			is_premium BOOL NOT NULL DEFAULT FALSE
 		);
-		CREATE INDEX bb_user_idx ON bblog.users USING btree(user_id,created_ts, updated_ts,email,mobile);
+		CREATE INDEX IF NOT EXISTS bb_user_idx ON bblog.users USING btree(user_id,created_ts, updated_ts,email,mobile);
 	`
 
 	_, err := DB.Exec(createUsersTable)
@@ -71,4 +71,120 @@ func createTables() {
 	// if err != nil {
 	// 	panic("Could not create users table")
 	// }
+
+	createUserTypeTable := `
+		CREATE TABLE IF NOT EXISTS bblog.user_type (
+			user_type_id SERIAL PRIMARY KEY,
+			description VARCHAR UNIQUE,
+			created_ts TIMESTAMPTZ DEFAULT NOW(),
+			updated_ts TIMESTAMPTZ NULL
+		)
+	`
+
+	_, err = DB.Exec(createUserTypeTable)
+
+	if err != nil {
+		log.Fatalf("Error creating user_type table: %v", err)
+	}
+
+	seedUserTypeTable := `
+		INSERT INTO bblog.user_type(description) VALUES 
+		('user'),('baby'),('pet')
+	`
+	_, err = DB.Exec(seedUserTypeTable)
+	if err != nil { //DO NOTHING
+		// log.Fatalf("Error inserting into user_type table: %v", err)
+	}
+
+	createSubUsersTable := `
+		CREATE TABLE IF NOT EXISTS bblog.sub_users (
+			sub_user_id BIGSERIAL PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			user_type_id SMALLINT NOT NULL,
+			is_active BOOL NOT NULL DEFAULT true,
+			is_deleted BOOL NOT NULL DEFAULT false,
+			created_ts TIMESTAMPTZ DEFAULT NOW(),
+			updated_ts TIMESTAMPTZ DEFAULT NOW(),
+			name VARCHAR NOT NULL,
+			CONSTRAINT user_type_id_fkey FOREIGN KEY(user_type_id) REFERENCES bblog.user_type(user_type_id) ON DELETE CASCADE
+		);
+		CREATE INDEX IF NOT EXISTS sub_user_id_namex ON bblog.sub_users USING btree(sub_user_id, user_id, name)
+	`
+
+	_, err = DB.Exec(createSubUsersTable)
+
+	if err != nil {
+		log.Fatalf("Error creating sub_users table: %v", err)
+	}
+
+	createLogTypesTable := `
+		CREATE TABLE IF NOT EXISTS bblog.log_types (
+			log_type_id SERIAL PRIMARY KEY,
+			log_name VARCHAR UNIQUE NOT NULL,
+			created_ts TIMESTAMPTZ DEFAULT NOW(),
+			updated_ts TIMESTAMPTZ NULL
+		)
+	`
+
+	_, err = DB.Exec(createLogTypesTable)
+
+	if err != nil {
+		log.Fatalf("Error creating log type table: %v", err)
+	}
+
+	seedLogTypeTable := `
+		INSERT INTO bblog.log_types(log_name) VALUES
+		('milk'),
+		('medicine'),
+		('vaccine'),
+		('diaper'),
+		('vitamins'),
+		('poop'),
+		('pee'),
+		('temperature'),
+		('height'),
+		('weight'),
+		('solid food'),
+		('snack'),
+		('meal'),
+		('cough'),
+		('vomit'),
+		('rashes'),
+		('injury'),
+		('bath'),
+		('hospital'),
+		('veterinary'),
+		('walks'),
+		('others')
+	`
+
+	_, err = DB.Exec(seedLogTypeTable)
+
+	if err != nil { //DO NOTHING
+		// log.Fatalf("Error inserting into log type table: %v", err)
+	}
+
+	createLogTable := `
+		CREATE TABLE IF NOT EXISTS bblog.user_log(
+			user_log_id BIGSERIAL PRIMARY KEY,
+			user_id INTEGER NOT NULL,
+			sub_user_id INTEGER NOT NULL,
+			log_type_id INTEGER NOT NULL,
+			log_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			log_description TEXT NULL,
+			created_ts TIMESTAMPTZ DEFAULT NOW(),
+			updated_ts TIMESTAMPTZ NULL,
+			CONSTRAINT user_id_fkey FOREIGN KEY(user_id) REFERENCES bblog.users(user_id) ON DELETE CASCADE,
+			CONSTRAINT sub_user_id_fkey FOREIGN KEY(sub_user_id) REFERENCES bblog.sub_users(sub_user_id) ON DELETE CASCADE,
+			CONSTRAINT log_type_id_fkey FOREIGN KEY(log_type_id) REFERENCES bblog.log_types(log_type_id)
+		);
+		CREATE INDEX IF NOT EXISTS user_log_user_idx ON bblog.user_log (user_id, log_type_id);
+		CREATE INDEX IF NOT EXISTS user_log_sub_idx ON bblog.user_log (sub_user_id);
+
+	`
+	_, err = DB.Exec(createLogTable)
+
+	if err != nil {
+		log.Fatalf("Error creating log table: %v", err)
+	}
 }
