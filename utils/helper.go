@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-func P(a string) {
+func Dump(a any) {
 	fmt.Print(a)
 	os.Exit(1)
 }

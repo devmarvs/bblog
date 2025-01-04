@@ -49,12 +49,13 @@ func createTables() {
 			created_ts TIMESTAMPTZ NULL DEFAULT NOW(),
 			updated_ts TIMESTAMPTZ NULL,
 			user_type_id INTEGER NULL,
+			username VARCHAR NULL,
 			password VARCHAR NOT NULL,
-			email VARCHAR NULL,
-			mobile VARCHAR NULL,
+			email VARCHAR NULL UNIQUE,
+			mobile VARCHAR NULL UNIQUE,
 			country_code VARCHAR NULL,
 			is_online BOOL NOT NULL DEFAULT FALSE,
-			is_active BOOL NOT NULL DEFAULT FALSE,
+			is_active BOOL NOT NULL DEFAULT TRUE,
 			is_deleted BOOL NOT NULL DEFAULT FALSE,
 			is_premium BOOL NOT NULL DEFAULT FALSE
 		);
