@@ -105,7 +105,7 @@ func createTables() {
 			is_active BOOL NOT NULL DEFAULT true,
 			is_deleted BOOL NOT NULL DEFAULT false,
 			created_ts TIMESTAMPTZ DEFAULT NOW(),
-			updated_ts TIMESTAMPTZ DEFAULT NOW(),
+			updated_ts TIMESTAMPTZ,
 			name VARCHAR NOT NULL,
 			CONSTRAINT user_type_id_fkey FOREIGN KEY(user_type_id) REFERENCES bblog.user_type(user_type_id) ON DELETE CASCADE
 		);

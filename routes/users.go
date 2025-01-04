@@ -60,3 +60,62 @@ func getUserById(context *gin.Context) {
 	}
 	context.JSON(http.StatusOK, gin.H{"data": user})
 }
+
+func createSubUser(context *gin.Context) {
+
+	userId, err := strconv.ParseInt(context.Param("id"), 10, 64)
+
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could Not Parse User Id", "error": err})
+	}
+
+	// log.Fatal(userId)
+	user, err := models.GetUserById(userId)
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not Parse User Id. Try again later"})
+		return
+	}
+
+	user.UserId = userId
+	var subUser models.SubUsers
+	err = context.ShouldBindJSON(&subUser)
+	// log.Fatal(err)
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
+		return
+	}
+	err = subUser.Save(userId)
+	if err != nil {
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not create sub user. Try again later", "error": err})
+		return
+	}
+
+	context.JSON(http.StatusCreated, gin.H{"data": subUser})
+}
+
+func getSubUserByUser(context *gin.Context) {
+
+	userId, err := strconv.ParseInt(context.Param("id"), 10, 64)
+
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could Not Parse User Id", "error": err})
+	}
+
+	_, err = models.GetUserById(userId)
+	if err != nil {
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch User", "error": err})
+	}
+
+	subUsers, err := models.GetSubUserByUser(userId)
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not fetch Sub Users", "error": err})
+		return
+	}
+
+	if len(subUsers) == 0 {
+		context.JSON(http.StatusOK, gin.H{"data": nil})
+		return
+	}
+	context.JSON(http.StatusOK, gin.H{"data": subUsers})
+	return
+}

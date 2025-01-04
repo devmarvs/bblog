@@ -66,6 +66,7 @@ func GetUsers() ([]Users, error) {
 	query := `
 		SELECT 
 		user_id, 
+		username,
 		created_ts, 
 		user_type_id,
 		email,
@@ -93,6 +94,7 @@ func GetUsers() ([]Users, error) {
 
 		err := rows.Scan(
 			&user.UserId,
+			&user.UserName,
 			&user.CreatedTs,
 			&user.UserTypeId,
 			&user.Email,
@@ -117,6 +119,7 @@ func GetUserById(userId int64) (*Users, error) {
 	query := `
 		SELECT
 		user_id, 
+		username,
 		created_ts, 
 		user_type_id,
 		email,
@@ -132,6 +135,7 @@ func GetUserById(userId int64) (*Users, error) {
 	var user Users
 	err := row.Scan(
 		&user.UserId,
+		&user.UserName,
 		&user.CreatedTs,
 		&user.UserTypeId,
 		&user.Email,
@@ -147,4 +151,52 @@ func GetUserById(userId int64) (*Users, error) {
 	}
 
 	return &user, nil
+}
+
+func GetSubUserByUser(userId int64) ([]SubUsers, error) {
+
+	query := `
+		SELECT 
+		sub_user_id,
+		user_id,
+		name,
+		user_type_id,
+		is_active,
+		is_deleted,
+		created_ts
+		FROM bblog.sub_users 
+		WHERE user_id = $1
+	`
+
+	rows, err := db.DB.Query(query, userId)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var subUsers []SubUsers
+
+	for rows.Next() {
+		var subUser SubUsers
+
+		err := rows.Scan(
+			&subUser.SubUserId,
+			&subUser.UserId,
+			&subUser.Name,
+			&subUser.UserTypeId,
+			&subUser.IsActive,
+			&subUser.IsDeleted,
+			&subUser.CreatedTs,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		subUsers = append(subUsers, subUser)
+	}
+
+	return subUsers, nil
 }

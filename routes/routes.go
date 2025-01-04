@@ -7,4 +7,7 @@ func RegisterRoutes(server *gin.Engine) {
 	server.POST("/user/create", createUser)
 	server.GET("/user/all", getUsers)
 	server.GET("/user/:id", getUserById)
+
+	server.POST("/user/:id/subuser", createSubUser)
+	server.GET("/user/:id/subuser", getSubUserByUser)
 }
