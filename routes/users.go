@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/devmarvs/bblog/models"
+	"github.com/devmarvs/bblog/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -118,4 +119,32 @@ func getSubUserByUser(context *gin.Context) {
 	}
 	context.JSON(http.StatusOK, gin.H{"data": subUsers})
 	return
+}
+
+func login(context *gin.Context) {
+
+	var user models.Users
+
+	err := context.ShouldBindJSON(&user)
+
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse request data", "error": err})
+		return
+	}
+
+	err = user.ValidateCredentials()
+
+	if err != nil {
+		context.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()}) //or "Could not authenticate user"
+		return
+	}
+
+	token, err := utils.GenerateToken(user.Email, user.UserId)
+
+	if err != nil {
+		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not authenticate user."})
+		return
+	}
+
+	context.JSON(http.StatusOK, gin.H{"message": "Login Successful", "token": token})
 }

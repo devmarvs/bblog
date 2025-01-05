@@ -1,6 +1,7 @@
 package models
 
 import (
+	"errors"
 	"log"
 
 	"github.com/devmarvs/bblog/db"
@@ -199,4 +200,27 @@ func GetSubUserByUser(userId int64) ([]SubUsers, error) {
 	}
 
 	return subUsers, nil
+}
+
+func (u *Users) ValidateCredentials() error {
+	query := `
+		SELECT user_id, password FROM bblog.users
+		WHERE email = $1
+	`
+	row := db.DB.QueryRow(query, u.Email)
+
+	var retrievedPassword string
+	err := row.Scan(&u.UserId, &retrievedPassword)
+
+	if err != nil {
+		return err
+	}
+
+	passwordIsValid := utils.CheckPasswordHash(u.Password, retrievedPassword)
+
+	if !passwordIsValid {
+		return errors.New("Credentials Invalid")
+	}
+
+	return nil
 }

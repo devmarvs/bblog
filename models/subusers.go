@@ -29,3 +29,24 @@ func (s *SubUsers) Save(userId int64) error {
 	s.CreatedTs = createdTs
 	return err
 }
+
+func GetSubUserById(subUserId int64) (*SubUsers, error) {
+
+	query := `
+		SELECT 
+		sub_user_id
+		FROM bblog.sub_users 
+		WHERE is_active IS TRUE 
+		AND is_deleted IS FALSE
+		AND sub_user_id = $1
+	`
+
+	row := db.DB.QueryRow(query, subUserId)
+	var subUser SubUsers
+	err := row.Scan(&subUser.SubUserId)
+	if err != nil {
+		return nil, err
+	}
+
+	return &subUser, nil
+}

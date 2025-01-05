@@ -1,15 +1,36 @@
 package main
 
 import (
+	"log"
+	"os"
+
 	"github.com/devmarvs/bblog/db"
 	"github.com/devmarvs/bblog/routes"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 func main() {
 
 	db.InitDb()
 	server := gin.Default()
+
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
+	mode := os.Getenv("GIN_MODE")
+	if mode == "" {
+		mode = gin.DebugMode // Default to debug if GIN_MODE is not set
+	}
+	gin.SetMode(mode)
+
+	// err := server.SetTrustedProxies(nil) // Trust all proxies
+	err = server.SetTrustedProxies([]string{"192.168.0.1", "10.0.0.0/8"})
+	if err != nil {
+		panic(err)
+	}
 	routes.RegisterRoutes(server)
 	server.Run(":8080")
 }
