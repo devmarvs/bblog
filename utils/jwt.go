@@ -34,7 +34,7 @@ func VerifyToken(token string) (int64, error) {
 	})
 
 	if err != nil {
-		log.Fatal(err)
+		// log.Fatal(err)
 		return 0, errors.New("Could not parse token.")
 	}
 
