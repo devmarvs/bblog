@@ -12,6 +12,8 @@ import (
 
 func main() {
 
+	os.MkdirAll("./uploads", os.ModePerm)
+
 	db.InitDb()
 	server := gin.Default()
 

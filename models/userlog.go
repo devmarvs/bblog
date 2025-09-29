@@ -45,12 +45,17 @@ func (ul *UserLog) Save() error {
 		&createdTs,
 	)
 
+	if err != nil {
+		return err
+	}
+
 	ul.UserLogId = userLogId
 	ul.SubUserId = subUserId
 	ul.LogTypeId = logTypeId
 	ul.LogTime = logTime
 	ul.LogDescription = logDescription
-	return err
+	ul.CreatedTs = createdTs
+	return nil
 }
 
 func GetLogByUserAndSubUser(userId, subUserId int64) ([]UserLog, error) {

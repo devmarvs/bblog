@@ -43,6 +43,17 @@ func InitDb() {
 
 func createTables() {
 
+	createSchema := `
+		CREATE SCHEMA IF NOT EXISTS bblog;
+	`
+
+	_, err := DB.Exec(createSchema)
+
+	if err != nil {
+		log.Fatalf("Error creating schema: %v", err) // Log the real error
+
+	}
+
 	createUsersTable := `
 		CREATE TABLE IF NOT EXISTS bblog.users (
 			user_id BIGSERIAL PRIMARY KEY,
@@ -62,7 +73,7 @@ func createTables() {
 		CREATE INDEX IF NOT EXISTS bb_user_idx ON bblog.users USING btree(user_id,created_ts, updated_ts,email,mobile);
 	`
 
-	_, err := DB.Exec(createUsersTable)
+	_, err = DB.Exec(createUsersTable)
 
 	if err != nil {
 		log.Fatalf("Error creating users table: %v", err) // Log the real error
@@ -91,6 +102,7 @@ func createTables() {
 	seedUserTypeTable := `
 		INSERT INTO bblog.user_type(description) VALUES 
 		('user'),('baby'),('pet')
+		ON CONFLICT (description) DO NOTHING
 	`
 	_, err = DB.Exec(seedUserTypeTable)
 	if err != nil { //DO NOTHING
@@ -157,6 +169,7 @@ func createTables() {
 		('veterinary'),
 		('walks'),
 		('others')
+		ON CONFLICT (log_name) DO NOTHING
 	`
 
 	_, err = DB.Exec(seedLogTypeTable)

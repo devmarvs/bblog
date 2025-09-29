@@ -10,29 +10,21 @@ import (
 )
 
 func createUser(context *gin.Context) {
-
 	var user models.Users
-
-	err := context.ShouldBindJSON(&user)
-
-	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": "null", "message": "Could not parse request data"})
+	if err := context.ShouldBindJSON(&user); err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse request data", "error": err.Error()})
 		return
 	}
 
-	err = user.Save()
-
-	if err != nil {
-		// log.Fatalf("cound not save user: %v", err) // Log the real error
-		context.JSON(http.StatusBadRequest, gin.H{"data": "null", "message": "Could not save user", "error": err})
+	if err := user.Save(); err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not save user", "error": err.Error()})
 		return
 	}
 
-	context.JSON(http.StatusCreated, gin.H{"data": "null", "message": "User created Successfully"})
+	context.JSON(http.StatusCreated, gin.H{"data": nil, "message": "User created Successfully"})
 }
 
 func getUsers(context *gin.Context) {
-
 	users, err := models.GetUsers()
 	if err != nil {
 		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not fetch users. Try again later"})
@@ -43,51 +35,68 @@ func getUsers(context *gin.Context) {
 		context.JSON(http.StatusOK, gin.H{"data": nil})
 		return
 	}
-	context.JSON(http.StatusOK, gin.H{"data": users})
 
+	context.JSON(http.StatusOK, gin.H{"data": users})
 }
 
 func getUserById(context *gin.Context) {
-
 	userId, err := strconv.ParseInt(context.Param("id"), 10, 64)
-
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could Not Parse User Id", "error": err})
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could Not Parse User Id", "error": err.Error()})
+		return
+	}
+
+	authUserID, ok := context.Get("userId")
+	if !ok {
+		context.JSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
+		return
+	}
+
+	if authID, ok := authUserID.(int64); !ok || authID != userId {
+		context.JSON(http.StatusForbidden, gin.H{"data": nil, "message": "Not Authorized"})
+		return
 	}
 
 	user, err := models.GetUserById(userId)
 	if err != nil {
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch User", "error": err})
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch User", "error": err.Error()})
+		return
 	}
+
 	context.JSON(http.StatusOK, gin.H{"data": user})
 }
 
 func createSubUser(context *gin.Context) {
-
 	userId, err := strconv.ParseInt(context.Param("id"), 10, 64)
-
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could Not Parse User Id", "error": err})
-	}
-
-	// log.Fatal(userId)
-	user, err := models.GetUserById(userId)
-	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not Parse User Id. Try again later"})
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could Not Parse User Id", "error": err.Error()})
 		return
 	}
 
-	user.UserId = userId
+	authUserID, ok := context.Get("userId")
+	if !ok {
+		context.JSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
+		return
+	}
+
+	if authID, ok := authUserID.(int64); !ok || authID != userId {
+		context.JSON(http.StatusForbidden, gin.H{"data": nil, "message": "Not Authorized"})
+		return
+	}
+
+	if _, err := models.GetUserById(userId); err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse User Id. Try again later", "error": err.Error()})
+		return
+	}
+
 	var subUser models.SubUsers
-	err = context.ShouldBindJSON(&subUser)
-	// log.Fatal(err)
-	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
+	if err := context.ShouldBindJSON(&subUser); err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data", "error": err.Error()})
 		return
 	}
-	err = subUser.Save(userId)
-	if err != nil {
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not create sub user. Try again later", "error": err})
+
+	if err := subUser.Save(userId); err != nil {
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not create sub user. Try again later", "error": err.Error()})
 		return
 	}
 
@@ -95,21 +104,31 @@ func createSubUser(context *gin.Context) {
 }
 
 func getSubUserByUser(context *gin.Context) {
-
 	userId, err := strconv.ParseInt(context.Param("id"), 10, 64)
-
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could Not Parse User Id", "error": err})
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could Not Parse User Id", "error": err.Error()})
+		return
 	}
 
-	_, err = models.GetUserById(userId)
-	if err != nil {
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch User", "error": err})
+	authUserID, ok := context.Get("userId")
+	if !ok {
+		context.JSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
+		return
+	}
+
+	if authID, ok := authUserID.(int64); !ok || authID != userId {
+		context.JSON(http.StatusForbidden, gin.H{"data": nil, "message": "Not Authorized"})
+		return
+	}
+
+	if _, err := models.GetUserById(userId); err != nil {
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch User", "error": err.Error()})
+		return
 	}
 
 	subUsers, err := models.GetSubUserByUser(userId)
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not fetch Sub Users", "error": err})
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not fetch Sub Users", "error": err.Error()})
 		return
 	}
 
@@ -117,30 +136,23 @@ func getSubUserByUser(context *gin.Context) {
 		context.JSON(http.StatusOK, gin.H{"data": nil})
 		return
 	}
+
 	context.JSON(http.StatusOK, gin.H{"data": subUsers})
-	return
 }
 
 func login(context *gin.Context) {
-
 	var user models.Users
-
-	err := context.ShouldBindJSON(&user)
-
-	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse request data", "error": err})
+	if err := context.ShouldBindJSON(&user); err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse request data", "error": err.Error()})
 		return
 	}
 
-	err = user.ValidateCredentials()
-
-	if err != nil {
-		context.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()}) //or "Could not authenticate user"
+	if err := user.ValidateCredentials(); err != nil {
+		context.JSON(http.StatusUnauthorized, gin.H{"message": err.Error()})
 		return
 	}
 
 	token, err := utils.GenerateToken(user.Email, user.UserId)
-
 	if err != nil {
 		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not authenticate user."})
 		return

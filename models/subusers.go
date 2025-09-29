@@ -14,36 +14,54 @@ type SubUsers struct {
 }
 
 func (s *SubUsers) Save(userId int64) error {
-
 	query := `
-		INSERT INTO bblog.sub_users(user_id,user_type_id, name) 
-		VALUES ($1, $2, $3) 
-		RETURNING sub_user_id, created_ts
-	`
+        INSERT INTO bblog.sub_users(user_id, user_type_id, name)
+        VALUES ($1, $2, $3)
+        RETURNING sub_user_id, created_ts
+    `
 
 	var insertedId int64
 	var createdTs string
 	err := db.DB.QueryRow(query, userId, s.UserTypeId, s.Name).Scan(&insertedId, &createdTs)
+	if err != nil {
+		return err
+	}
 
 	s.SubUserId = insertedId
 	s.CreatedTs = createdTs
-	return err
+	s.UserId = userId
+	s.IsActive = true
+	s.IsDeleted = false
+	return nil
 }
 
 func GetSubUserById(subUserId int64) (*SubUsers, error) {
-
 	query := `
-		SELECT 
-		sub_user_id
-		FROM bblog.sub_users 
-		WHERE is_active IS TRUE 
-		AND is_deleted IS FALSE
-		AND sub_user_id = $1
-	`
+        SELECT
+            sub_user_id,
+            user_id,
+            user_type_id,
+            name,
+            is_active,
+            is_deleted,
+            created_ts,
+            COALESCE(updated_ts, '')
+        FROM bblog.sub_users
+        WHERE sub_user_id = $1
+    `
 
 	row := db.DB.QueryRow(query, subUserId)
 	var subUser SubUsers
-	err := row.Scan(&subUser.SubUserId)
+	err := row.Scan(
+		&subUser.SubUserId,
+		&subUser.UserId,
+		&subUser.UserTypeId,
+		&subUser.Name,
+		&subUser.IsActive,
+		&subUser.IsDeleted,
+		&subUser.CreatedTs,
+		&subUser.UpdatedTs,
+	)
 	if err != nil {
 		return nil, err
 	}

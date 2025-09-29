@@ -2,7 +2,6 @@ package models
 
 import (
 	"errors"
-	"log"
 
 	"github.com/devmarvs/bblog/db"
 	"github.com/devmarvs/bblog/utils"
@@ -25,75 +24,55 @@ type Users struct {
 }
 
 func (u *Users) Save() error {
-
 	query := `
-		INSERT INTO bblog.users(user_type_id,username, password,email,mobile,country_code) 
-		VALUES ($1, $2, $3, $4, $5, $6) 
-		RETURNING user_id
-	`
-
-	// stmt, err := db.DB.Prepare(query)
-
-	// if err != nil {
-	// 	log.Fatalf("Error preparing: %v", err) // Log the real error
-	// 	return err
-	// }
-
-	// defer stmt.Close()
+        INSERT INTO bblog.users(user_type_id, username, password, email, mobile, country_code)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING user_id
+    `
 
 	hashedPassword, err := utils.HashPassword(u.Password)
-
 	if err != nil {
-		log.Fatalf("Error hashing: %v", err) // Log the real error
 		return err
 	}
 
-	// result, err := stmt.Exec(u.UserTypeId, hashedPassword, u.Email, u.Mobile, u.CountryCode)
-
-	// if err != nil {
-	// 	log.Fatalf("Error saving users: %v", err) // Log the real error
-	// 	// return err
-	// }
-
 	var insertedId int64
-	err = db.DB.QueryRow(query, u.UserTypeId, u.UserName, hashedPassword, u.Email, u.Mobile, u.CountryCode).Scan(&insertedId)
+	if err := db.DB.QueryRow(query, u.UserTypeId, u.UserName, hashedPassword, u.Email, u.Mobile, u.CountryCode).Scan(&insertedId); err != nil {
+		return err
+	}
 
 	u.UserId = insertedId
-	return err
+	return nil
 }
 
 func GetUsers() ([]Users, error) {
-
 	query := `
-		SELECT 
-		user_id, 
-		username,
-		created_ts, 
-		user_type_id,
-		email,
-		mobile,
-		country_code,
-		is_online,
-		is_active,
-		is_deleted,
-		is_premium
-		FROM bblog.users WHERE is_active IS TRUE 
-		AND is_deleted IS FALSE ORDER BY user_id DESC
-	`
+        SELECT
+            user_id,
+            username,
+            created_ts,
+            user_type_id,
+            email,
+            mobile,
+            country_code,
+            is_online,
+            is_active,
+            is_deleted,
+            is_premium
+        FROM bblog.users
+        WHERE is_active IS TRUE
+            AND is_deleted IS FALSE
+        ORDER BY user_id DESC
+    `
 	rows, err := db.DB.Query(query)
-
 	if err != nil {
 		return nil, err
 	}
-
 	defer rows.Close()
 
 	var users []Users
-
 	for rows.Next() {
 		var user Users
-
-		err := rows.Scan(
+		if err := rows.Scan(
 			&user.UserId,
 			&user.UserName,
 			&user.CreatedTs,
@@ -105,9 +84,7 @@ func GetUsers() ([]Users, error) {
 			&user.IsActive,
 			&user.IsDeleted,
 			&user.IsPremium,
-		)
-
-		if err != nil {
+		); err != nil {
 			return nil, err
 		}
 		users = append(users, user)
@@ -116,25 +93,27 @@ func GetUsers() ([]Users, error) {
 }
 
 func GetUserById(userId int64) (*Users, error) {
-
 	query := `
-		SELECT
-		user_id, 
-		username,
-		created_ts, 
-		user_type_id,
-		email,
-		mobile,
-		country_code,
-		is_online,
-		is_active,
-		is_deleted,
-		is_premium
-		FROM bblog.users WHERE user_id = $1
-	`
+        SELECT
+            user_id,
+            username,
+            created_ts,
+            user_type_id,
+            email,
+            mobile,
+            country_code,
+            is_online,
+            is_active,
+            is_deleted,
+            is_premium
+        FROM bblog.users
+        WHERE user_id = $1
+            AND is_deleted IS FALSE
+            AND is_active IS TRUE
+    `
 	row := db.DB.QueryRow(query, userId)
 	var user Users
-	err := row.Scan(
+	if err := row.Scan(
 		&user.UserId,
 		&user.UserName,
 		&user.CreatedTs,
@@ -146,8 +125,7 @@ func GetUserById(userId int64) (*Users, error) {
 		&user.IsActive,
 		&user.IsDeleted,
 		&user.IsPremium,
-	)
-	if err != nil {
+	); err != nil {
 		return nil, err
 	}
 
@@ -155,34 +133,32 @@ func GetUserById(userId int64) (*Users, error) {
 }
 
 func GetSubUserByUser(userId int64) ([]SubUsers, error) {
-
 	query := `
-		SELECT 
-		sub_user_id,
-		user_id,
-		name,
-		user_type_id,
-		is_active,
-		is_deleted,
-		created_ts
-		FROM bblog.sub_users 
-		WHERE user_id = $1
-	`
+        SELECT
+            sub_user_id,
+            user_id,
+            name,
+            user_type_id,
+            is_active,
+            is_deleted,
+            created_ts,
+            COALESCE(updated_ts, '')
+        FROM bblog.sub_users
+        WHERE user_id = $1
+            AND is_active IS TRUE
+            AND is_deleted IS FALSE
+    `
 
 	rows, err := db.DB.Query(query, userId)
-
 	if err != nil {
 		return nil, err
 	}
-
 	defer rows.Close()
 
 	var subUsers []SubUsers
-
 	for rows.Next() {
 		var subUser SubUsers
-
-		err := rows.Scan(
+		if err := rows.Scan(
 			&subUser.SubUserId,
 			&subUser.UserId,
 			&subUser.Name,
@@ -190,9 +166,8 @@ func GetSubUserByUser(userId int64) ([]SubUsers, error) {
 			&subUser.IsActive,
 			&subUser.IsDeleted,
 			&subUser.CreatedTs,
-		)
-
-		if err != nil {
+			&subUser.UpdatedTs,
+		); err != nil {
 			return nil, err
 		}
 
@@ -204,20 +179,17 @@ func GetSubUserByUser(userId int64) ([]SubUsers, error) {
 
 func (u *Users) ValidateCredentials() error {
 	query := `
-		SELECT user_id, password FROM bblog.users
-		WHERE email = $1
-	`
+        SELECT user_id, password FROM bblog.users
+        WHERE email = $1
+    `
 	row := db.DB.QueryRow(query, u.Email)
 
 	var retrievedPassword string
-	err := row.Scan(&u.UserId, &retrievedPassword)
-
-	if err != nil {
+	if err := row.Scan(&u.UserId, &retrievedPassword); err != nil {
 		return err
 	}
 
 	passwordIsValid := utils.CheckPasswordHash(u.Password, retrievedPassword)
-
 	if !passwordIsValid {
 		return errors.New("Credentials Invalid")
 	}
