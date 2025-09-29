@@ -37,8 +37,26 @@ func InitDb() {
 	DB.SetMaxOpenConns(10)
 	DB.SetMaxIdleConns(5)
 
+	createSchema()
 	createTables()
 
+}
+
+func createSchema() {
+	
+	createSchema := `
+		CREATE SCHEMA IF NOT EXISTS bblog;
+		SET search_path TO bblog, public;
+		GRANT ALL ON SCHEMA bblog TO public;
+		GRANT ALL ON ALL TABLES IN SCHEMA bblog TO public;
+	`
+
+	_, err := DB.Exec(createSchema)
+
+	if err != nil {
+		log.Fatalf("Error creating users table: %v", err) // Log the real error
+
+	}
 }
 
 func createTables() {
@@ -76,7 +94,7 @@ func createTables() {
 	_, err = DB.Exec(createUsersTable)
 
 	if err != nil {
-		log.Fatalf("Error creating users table: %v", err) // Log the real error
+		log.Fatalf("Error creating schema: %v", err) // Log the real error
 
 	}
 
