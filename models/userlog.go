@@ -3,7 +3,7 @@ package models
 import "github.com/devmarvs/bblog/db"
 
 type UserLog struct {
-	UserLogId      int64  `json:"user_log"`
+	UserLogId      int64  `json:"user_log_id"`
 	UserId         int64  `json:"user_id"`
 	SubUserId      int64  `json:"sub_user_id"`
 	SubUserName    string `json:"name"`

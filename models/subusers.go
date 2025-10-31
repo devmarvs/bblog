@@ -45,7 +45,7 @@ func GetSubUserById(subUserId int64) (*SubUsers, error) {
             is_active,
             is_deleted,
             created_ts,
-            COALESCE(updated_ts, '')
+            COALESCE(updated_ts::text, '')
         FROM bblog.sub_users
         WHERE sub_user_id = $1
     `

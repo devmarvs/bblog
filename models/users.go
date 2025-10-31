@@ -142,7 +142,7 @@ func GetSubUserByUser(userId int64) ([]SubUsers, error) {
             is_active,
             is_deleted,
             created_ts,
-            COALESCE(updated_ts, '')
+            COALESCE(updated_ts::text, '')
         FROM bblog.sub_users
         WHERE user_id = $1
             AND is_active IS TRUE
@@ -181,6 +181,8 @@ func (u *Users) ValidateCredentials() error {
 	query := `
         SELECT user_id, password FROM bblog.users
         WHERE email = $1
+            AND is_deleted IS FALSE
+            AND is_active IS TRUE
     `
 	row := db.DB.QueryRow(query, u.Email)
 
