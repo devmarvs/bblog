@@ -1,6 +1,7 @@
 # bblog API
 
 bblog is a REST API for logging baby (or pet) activities. It lets a primary user create sub-users, capture activity logs, and review history through authenticated endpoints.
+> **Status:** Work in progress – expect active development and frequent changes.
 
 ## Tech Stack
 - Go 1.23 with Gin for the web framework
