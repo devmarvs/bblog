@@ -48,6 +48,7 @@ Base path: `http://localhost:8080/bblog`
 | GET    | `/user/{id}/subuser`                           | Yes  | List sub-users owned by user     |
 | POST   | `/subuser/log`                                 | Yes  | Record an activity log           |
 | GET    | `/user/{id}/subuser/{subUserId}/log`           | Yes  | View logs for a specific sub-user|
+| GET    | `/log/types`                                   | Yes  | List supported log categories    |
 | POST   | `/logout`                                      | Yes  | Revoke the current JWT           |
 
 ### Authentication
@@ -301,6 +302,28 @@ Authorization: Bearer <jwt>
       "created_ts": "2024-06-09T20:15:12.345Z",
       "updated_ts": ""
     }
+  ]
+}
+```
+
+---
+
+### GET `/bblog/log/types` _(requires auth)_
+Return the list of all activity categories you can log. Use this to populate client-side dropdowns or validation.
+
+```http
+GET /bblog/log/types
+Authorization: Bearer <jwt>
+```
+
+**200 OK**
+```json
+{
+  "data": [
+    { "log_type_id": 1, "log_name": "milk" },
+    { "log_type_id": 2, "log_name": "medicine" },
+    { "log_type_id": 3, "log_name": "vaccine" }
+    // ...
   ]
 }
 ```
