@@ -14,13 +14,13 @@ func main() {
 
 	os.MkdirAll("./uploads", os.ModePerm)
 
-	db.InitDb()
-	server := gin.Default()
-
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
+
+	db.InitDb()
+	server := gin.Default()
 
 	mode := os.Getenv("GIN_MODE")
 	if mode == "" {
