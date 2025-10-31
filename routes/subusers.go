@@ -143,3 +143,14 @@ func validateUserLog(userLog *models.UserLog) (int, string) {
 
 	return 0, ""
 }
+
+func listLogTypes(context *gin.Context) {
+	logTypes, err := models.ListLogTypes()
+	if err != nil {
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch log types"})
+		return
+	}
+
+	context.JSON(http.StatusOK, gin.H{"data": logTypes})
+}

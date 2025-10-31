@@ -31,6 +31,7 @@ func RegisterRoutes(server *gin.Engine) {
 	api.GET("/user/:id/subuser/:subuserid/log", getLogByUser)
 	api.GET("/user/:id", getUserById)
 	api.GET("/user/all", getUsers)
+	api.GET("/log/types", listLogTypes)
 	api.POST("/logout", logout)
 
 	//public endpoints
