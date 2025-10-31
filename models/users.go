@@ -1,11 +1,14 @@
 package models
 
 import (
+	"database/sql"
 	"errors"
 
 	"github.com/devmarvs/bblog/db"
 	"github.com/devmarvs/bblog/utils"
 )
+
+var ErrInvalidCredentials = errors.New("invalid credentials")
 
 type Users struct {
 	UserId      int64  `json:"user_id"`
@@ -188,12 +191,15 @@ func (u *Users) ValidateCredentials() error {
 
 	var retrievedPassword string
 	if err := row.Scan(&u.UserId, &retrievedPassword); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrInvalidCredentials
+		}
 		return err
 	}
 
 	passwordIsValid := utils.CheckPasswordHash(u.Password, retrievedPassword)
 	if !passwordIsValid {
-		return errors.New("Credentials Invalid")
+		return ErrInvalidCredentials
 	}
 
 	return nil

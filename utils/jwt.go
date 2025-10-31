@@ -37,7 +37,7 @@ func GenerateToken(email string, userId int64) (string, error) {
 func VerifyToken(token string) (int64, error) {
 	sanitizedToken := sanitizeToken(token)
 	if sanitizedToken == "" {
-		return 0, errors.New("Could not parse token.")
+		return 0, errors.New("Invalid token.")
 	}
 
 	key, err := getSecretKey()
@@ -45,24 +45,33 @@ func VerifyToken(token string) (int64, error) {
 		return 0, err
 	}
 
-	parsedToken, err := jwt.Parse(sanitizedToken, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, errors.New("Unexpected Signing method")
-		}
-		return []byte(key), nil
-	})
+	parsedToken, err := jwt.Parse(
+		sanitizedToken,
+		func(token *jwt.Token) (interface{}, error) {
+			if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+				return nil, errors.New("unexpected signing method")
+			}
+			return []byte(key), nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+	)
 
-	if err != nil {
-		return 0, errors.New("Could not parse token.")
-	}
-
-	if !parsedToken.Valid {
-		return 0, errors.New("Invalid Token!")
+	if err != nil || !parsedToken.Valid {
+		return 0, errors.New("Invalid token.")
 	}
 
 	claims, ok := parsedToken.Claims.(jwt.MapClaims)
 	if !ok {
 		return 0, errors.New("Invalid token claims.")
+	}
+
+	expiration, err := claims.GetExpirationTime()
+	if err != nil || expiration == nil {
+		return 0, errors.New("Invalid token claims.")
+	}
+
+	if time.Now().After(expiration.Time) {
+		return 0, errors.New("Invalid token.")
 	}
 
 	userIDClaim, ok := claims["userId"]
@@ -71,7 +80,7 @@ func VerifyToken(token string) (int64, error) {
 	}
 
 	userId, ok := toInt64(userIDClaim)
-	if !ok {
+	if !ok || userId <= 0 {
 		return 0, errors.New("Invalid token claims.")
 	}
 

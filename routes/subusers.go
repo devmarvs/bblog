@@ -1,8 +1,11 @@
 package routes
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/devmarvs/bblog/models"
 	"github.com/gin-gonic/gin"
@@ -23,13 +26,25 @@ func createLog(context *gin.Context) {
 
 	var userLog models.UserLog
 	if err := context.ShouldBindJSON(&userLog); err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse request data", "error": err.Error()})
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse request data"})
+		return
+	}
+
+	sanitizeUserLog(&userLog)
+	if status, message := validateUserLog(&userLog); status != 0 {
+		context.JSON(status, gin.H{"data": nil, "message": message})
 		return
 	}
 
 	subUser, err := models.GetSubUserById(userLog.SubUserId)
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not fetch Sub Users", "error": err.Error()})
+		if errors.Is(err, sql.ErrNoRows) {
+			context.JSON(http.StatusNotFound, gin.H{"data": nil, "message": "Sub user not found"})
+			return
+		}
+
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch sub user"})
 		return
 	}
 
@@ -41,17 +56,18 @@ func createLog(context *gin.Context) {
 	userLog.UserId = authenticatedID
 
 	if err := userLog.Save(); err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not save user log", "error": err.Error()})
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not save user log"})
 		return
 	}
 
-	context.JSON(http.StatusCreated, gin.H{"data": userLog, "message": "User Log created Successfully"})
+	context.JSON(http.StatusCreated, gin.H{"data": userLog, "message": "User log created successfully"})
 }
 
 func getLogByUser(context *gin.Context) {
 	userId, err := strconv.ParseInt(context.Param("id"), 10, 64)
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could Not Parse User Id", "error": err.Error()})
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse user id"})
 		return
 	}
 
@@ -69,18 +85,30 @@ func getLogByUser(context *gin.Context) {
 
 	subUserId, err := strconv.ParseInt(context.Param("subuserid"), 10, 64)
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could Not Parse Sub User Id", "error": err.Error()})
+		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse sub user id"})
 		return
 	}
 
 	if _, err := models.GetUserById(userId); err != nil {
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch User", "error": err.Error()})
+		if errors.Is(err, sql.ErrNoRows) {
+			context.JSON(http.StatusNotFound, gin.H{"data": nil, "message": "User not found"})
+			return
+		}
+
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch user"})
 		return
 	}
 
 	subUser, err := models.GetSubUserById(subUserId)
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not fetch Sub Users", "error": err.Error()})
+		if errors.Is(err, sql.ErrNoRows) {
+			context.JSON(http.StatusNotFound, gin.H{"data": nil, "message": "Sub user not found"})
+			return
+		}
+
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch sub user"})
 		return
 	}
 
@@ -91,9 +119,27 @@ func getLogByUser(context *gin.Context) {
 
 	user, err := models.GetLogByUserAndSubUser(userId, subUserId)
 	if err != nil {
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch User", "error": err.Error()})
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch user log"})
 		return
 	}
 
 	context.JSON(http.StatusOK, gin.H{"data": user})
+}
+
+func sanitizeUserLog(userLog *models.UserLog) {
+	userLog.LogDescription = strings.TrimSpace(userLog.LogDescription)
+	userLog.LogTime = strings.TrimSpace(userLog.LogTime)
+}
+
+func validateUserLog(userLog *models.UserLog) (int, string) {
+	if userLog.SubUserId <= 0 {
+		return http.StatusBadRequest, "Invalid sub user id"
+	}
+
+	if userLog.LogTypeId <= 0 {
+		return http.StatusBadRequest, "Invalid log type id"
+	}
+
+	return 0, ""
 }

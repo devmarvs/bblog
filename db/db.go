@@ -43,34 +43,16 @@ func InitDb() {
 }
 
 func createSchema() {
-	
-	createSchema := `
+	const createSchema = `
 		CREATE SCHEMA IF NOT EXISTS bblog;
-		SET search_path TO bblog, public;
-		GRANT ALL ON SCHEMA bblog TO public;
-		GRANT ALL ON ALL TABLES IN SCHEMA bblog TO public;
 	`
 
-	_, err := DB.Exec(createSchema)
-
-	if err != nil {
-		log.Fatalf("Error creating users table: %v", err) // Log the real error
-
+	if _, err := DB.Exec(createSchema); err != nil {
+		log.Fatalf("Error ensuring schema exists: %v", err)
 	}
 }
 
 func createTables() {
-
-	createSchema := `
-		CREATE SCHEMA IF NOT EXISTS bblog;
-	`
-
-	_, err := DB.Exec(createSchema)
-
-	if err != nil {
-		log.Fatalf("Error creating schema: %v", err) // Log the real error
-
-	}
 
 	createUsersTable := `
 		CREATE TABLE IF NOT EXISTS bblog.users (
@@ -91,7 +73,7 @@ func createTables() {
 		CREATE INDEX IF NOT EXISTS bb_user_idx ON bblog.users USING btree(user_id,created_ts, updated_ts,email,mobile);
 	`
 
-	_, err = DB.Exec(createUsersTable)
+	_, err := DB.Exec(createUsersTable)
 
 	if err != nil {
 		log.Fatalf("Error creating schema: %v", err) // Log the real error

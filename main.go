@@ -12,7 +12,9 @@ import (
 
 func main() {
 
-	os.MkdirAll("./uploads", os.ModePerm)
+	if err := os.MkdirAll("./uploads", 0o755); err != nil {
+		log.Fatalf("unable to create uploads directory: %v", err)
+	}
 
 	err := godotenv.Load()
 	if err != nil {
@@ -28,7 +30,7 @@ func main() {
 	}
 	gin.SetMode(mode)
 
-	err = server.SetTrustedProxies(nil) // Trust all proxies
+	err = server.SetTrustedProxies(nil) // Disable trusting proxy headers by default
 	// err = server.SetTrustedProxies([]string{"192.168.0.1", "10.0.0.0/8"})
 	if err != nil {
 		panic(err)
