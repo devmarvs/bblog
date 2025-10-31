@@ -1,0 +1,33 @@
+services:
+  bblog-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bblog
+    # If you're using podman, this works with podman-compose as well
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Sensible defaults; override in .env
+      - GIN_MODE=${GIN_MODE:-release}
+      - PORT=${PORT:-8080}
+    # If you want to bind to a host port for local testing, uncomment:
+    # ports:
+    #   - "18080:8080"
+    # In production behind a reverse proxy, you usually don't need host ports,
+    # just attach to a shared network with the proxy if you use one.
+    volumes:
+      # Persist uploads if your app writes files here
+      - uploads-data:/app/uploads:rw
+      - ./.env:/app/.env:ro,Z   # <- make the file exist in the container
+    networks:
+      - web
+      -
+
+volumes:
+  uploads-data:
+
+networks:
+  web:
+    external: true

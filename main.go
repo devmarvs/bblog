@@ -28,11 +28,16 @@ func main() {
 	}
 	gin.SetMode(mode)
 
-	// err := server.SetTrustedProxies(nil) // Trust all proxies
-	err = server.SetTrustedProxies([]string{"192.168.0.1", "10.0.0.0/8"})
+	err = server.SetTrustedProxies(nil) // Trust all proxies
+	// err = server.SetTrustedProxies([]string{"192.168.0.1", "10.0.0.0/8"})
 	if err != nil {
 		panic(err)
 	}
 	routes.RegisterRoutes(server)
-	server.Run(":8080")
+	port := os.Getenv("PORT")
+
+	if port == "" {
+		port = "8080"
+	}
+	server.Run(":" + port)
 }

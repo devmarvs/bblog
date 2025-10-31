@@ -1,0 +1,45 @@
+version: "3.9"
+services:
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - --api.dashboard=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Let's Encrypt (HTTP-01)
+      - --certificatesresolvers.le.acme.email=YOUR_EMAIL@EXAMPLE.COM
+      - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge=true
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      # (optional) redirect http->https globally
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+    ports:
+      - "80:80"
+      - "443:443"
+      # (optional) expose dashboard on 8080 internally only by NOT publishing it
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - web
+    labels:
+      # optional: protect dashboard by host rule (add your IP allowlist or basic auth if exposing)
+      - traefik.enable=true
+      # Do NOT expose dashboard publicly unless you add auth; otherwise omit these labels.
+      - traefik.http.routers.bblog.rule=Host(`api.devmarvs.com`) && PathPrefix(`/bblog`)
+      - traefik.http.routers.bblog.entrypoints=websecure
+      - traefik.http.routers.bblog.tls=true
+      - traefik.http.routers.bblog.tls.certresolver=le
+      - traefik.http.services.bblog.loadbalancer.server.port=8080
+
+volumes:
+  traefik_letsencrypt:
+
+networks:
+  web:
+    external: true
