@@ -42,15 +42,16 @@ Base path: `http://localhost:8080/bblog`
 | ------ | ---------------------------------------------- | ---- | -------------------------------- |
 | POST   | `/user/create`                                 | No   | Register a primary user          |
 | POST   | `/login`                                       | No   | Authenticate and get JWT         |
-| GET    | `/user/all`                                    | No   | List active users                |
+| GET    | `/user/all`                                    | Yes  | List active users you can view   |
 | GET    | `/user/{id}`                                   | Yes  | Fetch a user by id               |
 | POST   | `/user/{id}/subuser`                           | Yes  | Create a sub-user (baby/pet)     |
 | GET    | `/user/{id}/subuser`                           | Yes  | List sub-users owned by user     |
 | POST   | `/subuser/log`                                 | Yes  | Record an activity log           |
 | GET    | `/user/{id}/subuser/{subUserId}/log`           | Yes  | View logs for a specific sub-user|
+| POST   | `/logout`                                      | Yes  | Revoke the current JWT           |
 
 ### Authentication
-Add an `Authorization: Bearer <jwt>` header to any endpoint marked with **Auth = Yes**. Tokens expire two hours after issuance.
+Add an `Authorization: Bearer <jwt>` header to any endpoint marked with **Auth = Yes**. Tokens expire two hours after issuance. Calling `/bblog/logout` revokes the presented token immediately so it cannot be reused even if time remains.
 
 ---
 
@@ -110,8 +111,27 @@ Use the returned token for subsequent protected requests.
 
 ---
 
-### GET `/bblog/user/all`
-Fetch all active, non-deleted users.
+### POST `/bblog/logout` _(requires auth)_
+Revoke the current session token. After a successful logout the same JWT can no longer access protected endpoints.
+
+```http
+POST /bblog/logout
+Authorization: Bearer <jwt>
+```
+
+**200 OK**
+```json
+{
+  "message": "Logout successful"
+}
+```
+
+Call `/bblog/login` again to obtain a fresh token when needed.
+
+---
+
+### GET `/bblog/user/all` _(requires auth)_
+Fetch all active, non-deleted users that the authenticated caller is permitted to view.
 
 **200 OK**
 ```json
@@ -133,7 +153,7 @@ Fetch all active, non-deleted users.
   ]
 }
 ```
-If no users exist, `data` is `null`.
+If no users exist, `data` is `null`. Requests without a valid token receive `401`/`403`.
 
 ---
 

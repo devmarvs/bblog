@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/devmarvs/bblog/models"
 	"github.com/devmarvs/bblog/utils"
@@ -209,6 +210,40 @@ func login(context *gin.Context) {
 	}
 
 	context.JSON(http.StatusOK, gin.H{"message": "Login Successful", "token": token})
+}
+
+func logout(context *gin.Context) {
+	tokenValue, ok := context.Get("token")
+	if !ok {
+		context.JSON(http.StatusUnauthorized, gin.H{"message": "Not Authorized"})
+		return
+	}
+
+	expiresValue, ok := context.Get("tokenExpiresAt")
+	if !ok {
+		context.JSON(http.StatusUnauthorized, gin.H{"message": "Not Authorized"})
+		return
+	}
+
+	sanitizedToken, ok := tokenValue.(string)
+	if !ok || sanitizedToken == "" {
+		context.JSON(http.StatusUnauthorized, gin.H{"message": "Not Authorized"})
+		return
+	}
+
+	expiresAt, ok := expiresValue.(time.Time)
+	if !ok {
+		context.JSON(http.StatusUnauthorized, gin.H{"message": "Not Authorized"})
+		return
+	}
+
+	if err := models.RevokeToken(sanitizedToken, expiresAt); err != nil {
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not log out"})
+		return
+	}
+
+	context.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
 }
 
 func sanitizeUserPayload(user *models.Users) {

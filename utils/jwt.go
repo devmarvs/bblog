@@ -19,6 +19,12 @@ var (
 	secretKeyErr  error
 )
 
+type TokenDetails struct {
+	UserID    int64
+	Token     string
+	ExpiresAt time.Time
+}
+
 func GenerateToken(email string, userId int64) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"email":  email,
@@ -34,15 +40,15 @@ func GenerateToken(email string, userId int64) (string, error) {
 	return token.SignedString([]byte(key))
 }
 
-func VerifyToken(token string) (int64, error) {
+func VerifyToken(token string) (*TokenDetails, error) {
 	sanitizedToken := sanitizeToken(token)
 	if sanitizedToken == "" {
-		return 0, errors.New("Invalid token.")
+		return nil, errors.New("Invalid token.")
 	}
 
 	key, err := getSecretKey()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	parsedToken, err := jwt.Parse(
@@ -57,34 +63,38 @@ func VerifyToken(token string) (int64, error) {
 	)
 
 	if err != nil || !parsedToken.Valid {
-		return 0, errors.New("Invalid token.")
+		return nil, errors.New("Invalid token.")
 	}
 
 	claims, ok := parsedToken.Claims.(jwt.MapClaims)
 	if !ok {
-		return 0, errors.New("Invalid token claims.")
+		return nil, errors.New("Invalid token claims.")
 	}
 
 	expiration, err := claims.GetExpirationTime()
 	if err != nil || expiration == nil {
-		return 0, errors.New("Invalid token claims.")
+		return nil, errors.New("Invalid token claims.")
 	}
 
 	if time.Now().After(expiration.Time) {
-		return 0, errors.New("Invalid token.")
+		return nil, errors.New("Invalid token.")
 	}
 
 	userIDClaim, ok := claims["userId"]
 	if !ok {
-		return 0, errors.New("Invalid token claims.")
+		return nil, errors.New("Invalid token claims.")
 	}
 
 	userId, ok := toInt64(userIDClaim)
 	if !ok || userId <= 0 {
-		return 0, errors.New("Invalid token claims.")
+		return nil, errors.New("Invalid token claims.")
 	}
 
-	return userId, nil
+	return &TokenDetails{
+		UserID:    userId,
+		Token:     sanitizedToken,
+		ExpiresAt: expiration.Time,
+	}, nil
 }
 
 func getSecretKey() (string, error) {

@@ -201,4 +201,15 @@ func createTables() {
 	if err != nil {
 		log.Fatalf("Error creating log table: %v", err)
 	}
+
+	createRevokedTokensTable := `
+		CREATE TABLE IF NOT EXISTS bblog.revoked_tokens(
+			token_hash VARCHAR PRIMARY KEY,
+			expires_at TIMESTAMPTZ NOT NULL
+		)
+	`
+
+	if _, err = DB.Exec(createRevokedTokensTable); err != nil {
+		log.Fatalf("Error creating revoked tokens table: %v", err)
+	}
 }
