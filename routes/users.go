@@ -281,3 +281,14 @@ func validateSubUser(subUser *models.SubUsers) (int, string) {
 
 	return 0, ""
 }
+
+func listUserTypes(context *gin.Context) {
+	userTypes, err := models.ListUserTypes()
+	if err != nil {
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch user types"})
+		return
+	}
+
+	context.JSON(http.StatusOK, gin.H{"data": userTypes})
+}

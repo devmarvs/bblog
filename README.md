@@ -48,6 +48,7 @@ Base path: `http://localhost:8080/bblog`
 | GET    | `/user/{id}/subuser`                           | Yes  | List sub-users owned by user     |
 | POST   | `/subuser/log`                                 | Yes  | Record an activity log           |
 | GET    | `/user/{id}/subuser/{subUserId}/log`           | Yes  | View logs for a specific sub-user|
+| GET    | `/user/types`                                  | Yes  | List supported user types        |
 | GET    | `/log/types`                                   | Yes  | List supported log categories    |
 | POST   | `/logout`                                      | Yes  | Revoke the current JWT           |
 
@@ -327,6 +328,29 @@ Authorization: Bearer <jwt>
   ]
 }
 ```
+
+---
+
+### GET `/bblog/user/types` _(requires auth)_
+Return all available user roles (e.g., primary user, baby, pet).
+
+```http
+GET /bblog/user/types
+Authorization: Bearer <jwt>
+```
+
+**200 OK**
+```json
+{
+  "data": [
+    { "user_type_id": 1, "description": "user" },
+    { "user_type_id": 2, "description": "baby" },
+    { "user_type_id": 3, "description": "pet" }
+  ]
+}
+```
+
+Use these IDs when creating users or sub-users.
 
 ---
 
