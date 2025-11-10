@@ -66,7 +66,7 @@ func createTables() {
 			mobile VARCHAR NULL UNIQUE,
 			country_code VARCHAR NULL,
 			is_online BOOL NOT NULL DEFAULT FALSE,
-			is_active BOOL NOT NULL DEFAULT TRUE,
+			is_active BOOL NOT NULL DEFAULT FALSE,
 			is_deleted BOOL NOT NULL DEFAULT FALSE,
 			is_premium BOOL NOT NULL DEFAULT FALSE
 		);
@@ -211,5 +211,33 @@ func createTables() {
 
 	if _, err = DB.Exec(createRevokedTokensTable); err != nil {
 		log.Fatalf("Error creating revoked tokens table: %v", err)
+	}
+
+	createEmailVerificationTable := `
+		CREATE TABLE IF NOT EXISTS bblog.email_verifications (
+			user_id BIGINT PRIMARY KEY REFERENCES bblog.users(user_id) ON DELETE CASCADE,
+			token_hash VARCHAR NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL,
+			consumed_at TIMESTAMPTZ NULL,
+			created_ts TIMESTAMPTZ DEFAULT NOW()
+		);
+	`
+
+	if _, err = DB.Exec(createEmailVerificationTable); err != nil {
+		log.Fatalf("Error creating email verification table: %v", err)
+	}
+
+	createPasswordResetTable := `
+		CREATE TABLE IF NOT EXISTS bblog.password_resets (
+			user_id BIGINT PRIMARY KEY REFERENCES bblog.users(user_id) ON DELETE CASCADE,
+			token_hash VARCHAR NOT NULL,
+			expires_at TIMESTAMPTZ NOT NULL,
+			consumed_at TIMESTAMPTZ NULL,
+			created_ts TIMESTAMPTZ DEFAULT NOW()
+		);
+	`
+
+	if _, err = DB.Exec(createPasswordResetTable); err != nil {
+		log.Fatalf("Error creating password reset table: %v", err)
 	}
 }

@@ -8,7 +8,10 @@ import (
 	"github.com/devmarvs/bblog/utils"
 )
 
-var ErrInvalidCredentials = errors.New("invalid credentials")
+var (
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	ErrEmailNotVerified   = errors.New("email not verified")
+)
 
 type Users struct {
 	UserId      int64  `json:"user_id"`
@@ -28,10 +31,10 @@ type Users struct {
 
 func (u *Users) Save() error {
 	query := `
-        INSERT INTO bblog.users(user_type_id, username, password, email, mobile, country_code)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING user_id
-    `
+	        INSERT INTO bblog.users(user_type_id, username, password, email, mobile, country_code, is_active)
+	        VALUES ($1, $2, $3, $4, $5, $6, $7)
+	        RETURNING user_id
+	    `
 
 	hashedPassword, err := utils.HashPassword(u.Password)
 	if err != nil {
@@ -39,11 +42,12 @@ func (u *Users) Save() error {
 	}
 
 	var insertedId int64
-	if err := db.DB.QueryRow(query, u.UserTypeId, u.UserName, hashedPassword, u.Email, u.Mobile, u.CountryCode).Scan(&insertedId); err != nil {
+	if err := db.DB.QueryRow(query, u.UserTypeId, u.UserName, hashedPassword, u.Email, u.Mobile, u.CountryCode, false).Scan(&insertedId); err != nil {
 		return err
 	}
 
 	u.UserId = insertedId
+	u.IsActive = false
 	return nil
 }
 
@@ -97,7 +101,7 @@ func GetUsers() ([]Users, error) {
 
 func GetUserById(userId int64) (*Users, error) {
 	query := `
-        SELECT
+	        SELECT
             user_id,
             username,
             created_ts,
@@ -115,6 +119,46 @@ func GetUserById(userId int64) (*Users, error) {
             AND is_active IS TRUE
     `
 	row := db.DB.QueryRow(query, userId)
+	var user Users
+	if err := row.Scan(
+		&user.UserId,
+		&user.UserName,
+		&user.CreatedTs,
+		&user.UserTypeId,
+		&user.Email,
+		&user.Mobile,
+		&user.CountryCode,
+		&user.IsOnline,
+		&user.IsActive,
+		&user.IsDeleted,
+		&user.IsPremium,
+	); err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+func GetUserByEmail(email string) (*Users, error) {
+	query := `
+	        SELECT
+	            user_id,
+	            username,
+	            created_ts,
+	            user_type_id,
+	            email,
+	            mobile,
+	            country_code,
+	            is_online,
+	            is_active,
+	            is_deleted,
+	            is_premium
+	        FROM bblog.users
+	        WHERE email = $1
+	            AND is_deleted IS FALSE
+	    `
+
+	row := db.DB.QueryRow(query, email)
 	var user Users
 	if err := row.Scan(
 		&user.UserId,
@@ -182,19 +226,25 @@ func GetSubUserByUser(userId int64) ([]SubUsers, error) {
 
 func (u *Users) ValidateCredentials() error {
 	query := `
-        SELECT user_id, password FROM bblog.users
-        WHERE email = $1
-            AND is_deleted IS FALSE
-            AND is_active IS TRUE
-    `
+	        SELECT user_id, password, is_active FROM bblog.users
+	        WHERE email = $1
+	            AND is_deleted IS FALSE
+	    `
 	row := db.DB.QueryRow(query, u.Email)
 
-	var retrievedPassword string
-	if err := row.Scan(&u.UserId, &retrievedPassword); err != nil {
+	var (
+		retrievedPassword string
+		isActive          bool
+	)
+	if err := row.Scan(&u.UserId, &retrievedPassword, &isActive); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrInvalidCredentials
 		}
 		return err
+	}
+
+	if !isActive {
+		return ErrEmailNotVerified
 	}
 
 	passwordIsValid := utils.CheckPasswordHash(u.Password, retrievedPassword)

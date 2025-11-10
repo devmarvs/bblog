@@ -38,6 +38,10 @@ func RegisterRoutes(server *gin.Engine) {
 	//public endpoints
 	public := server.Group("/bblog")
 	public.POST("/user/create", createUser)
+	public.POST("/user/resend-verification", resendVerificationEmail)
+	public.GET("/user/verify", verifyUserEmail)
+	public.POST("/user/forgot-password", forgotPassword)
+	public.POST("/user/reset-password", resetPassword)
 	public.POST("/login", login)
 
 }

@@ -3,7 +3,9 @@ package routes
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +15,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const minPasswordLength = 8
+const (
+	minPasswordLength      = 8
+	verificationTokenSize  = 32
+	verificationTokenTTL   = 24 * time.Hour
+	passwordResetTokenSize = 32
+	passwordResetTokenTTL  = 1 * time.Hour
+)
 
 func createUser(context *gin.Context) {
 	var user models.Users
@@ -35,7 +43,148 @@ func createUser(context *gin.Context) {
 		return
 	}
 
-	context.JSON(http.StatusCreated, gin.H{"data": nil, "message": "User created successfully"})
+	if err := sendVerification(&user); err != nil {
+		context.Error(err)
+		message := "Could not send verification email"
+		if errors.Is(err, utils.ErrMissingSMTPConfig) {
+			message = "Email service is not configured"
+		}
+		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": message})
+		return
+	}
+
+	context.JSON(http.StatusCreated, gin.H{"data": nil, "message": "User created. Check your email to verify the account."})
+}
+
+func forgotPassword(context *gin.Context) {
+	var payload struct {
+		Email string `json:"email"`
+	}
+
+	if err := context.ShouldBindJSON(&payload); err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
+		return
+	}
+
+	email := strings.ToLower(strings.TrimSpace(payload.Email))
+	if email == "" {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Email is required"})
+		return
+	}
+
+	const genericMessage = "If the account exists, a reset email has been sent"
+
+	user, err := models.GetUserByEmail(email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			context.JSON(http.StatusOK, gin.H{"message": genericMessage})
+			return
+		}
+
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not process password reset"})
+		return
+	}
+
+	if err := sendPasswordReset(user); err != nil {
+		context.Error(err)
+		message := "Could not send password reset email"
+		if errors.Is(err, utils.ErrMissingSMTPConfig) {
+			message = "Email service is not configured"
+		}
+		context.JSON(http.StatusInternalServerError, gin.H{"message": message})
+		return
+	}
+
+	context.JSON(http.StatusOK, gin.H{"message": genericMessage})
+}
+
+func resetPassword(context *gin.Context) {
+	var payload struct {
+		Token    string `json:"token"`
+		Password string `json:"password"`
+	}
+
+	if err := context.ShouldBindJSON(&payload); err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
+		return
+	}
+
+	payload.Password = strings.TrimSpace(payload.Password)
+	payload.Token = strings.TrimSpace(payload.Token)
+
+	if payload.Token == "" {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Reset token is required"})
+		return
+	}
+
+	if len(payload.Password) < minPasswordLength {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Password must be at least 8 characters long"})
+		return
+	}
+
+	if err := models.ResetPassword(payload.Token, payload.Password); err != nil {
+		switch {
+		case errors.Is(err, models.ErrPasswordResetTokenInvalid):
+			context.JSON(http.StatusBadRequest, gin.H{"message": "Invalid reset token"})
+		case errors.Is(err, models.ErrPasswordResetTokenExpired):
+			context.JSON(http.StatusBadRequest, gin.H{"message": "Reset link has expired"})
+		case errors.Is(err, models.ErrPasswordResetTokenUsed):
+			context.JSON(http.StatusConflict, gin.H{"message": "Reset link already used"})
+		default:
+			context.Error(err)
+			context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not reset password"})
+		}
+		return
+	}
+
+	context.JSON(http.StatusOK, gin.H{"message": "Password updated successfully"})
+}
+
+func resendVerificationEmail(context *gin.Context) {
+	var payload struct {
+		Email string `json:"email"`
+	}
+
+	if err := context.ShouldBindJSON(&payload); err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
+		return
+	}
+
+	email := strings.ToLower(strings.TrimSpace(payload.Email))
+	if email == "" {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Email is required"})
+		return
+	}
+
+	user, err := models.GetUserByEmail(email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			context.JSON(http.StatusOK, gin.H{"message": "If the account exists, a verification email has been sent"})
+			return
+		}
+
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not resend verification email"})
+		return
+	}
+
+	if user.IsActive {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Account is already verified"})
+		return
+	}
+
+	if err := sendVerification(user); err != nil {
+		context.Error(err)
+		message := "Could not send verification email"
+		if errors.Is(err, utils.ErrMissingSMTPConfig) {
+			message = "Email service is not configured"
+		}
+		context.JSON(http.StatusInternalServerError, gin.H{"message": message})
+		return
+	}
+
+	context.JSON(http.StatusOK, gin.H{"message": "Verification email sent"})
 }
 
 func getUsers(context *gin.Context) {
@@ -197,6 +346,11 @@ func login(context *gin.Context) {
 			return
 		}
 
+		if errors.Is(err, models.ErrEmailNotVerified) {
+			context.JSON(http.StatusForbidden, gin.H{"message": "Please verify your email before logging in"})
+			return
+		}
+
 		context.Error(err)
 		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not authenticate user."})
 		return
@@ -256,6 +410,77 @@ func sanitizeUserPayload(user *models.Users) {
 
 func sanitizeSubUserPayload(subUser *models.SubUsers) {
 	subUser.Name = strings.TrimSpace(subUser.Name)
+}
+
+func sendVerification(user *models.Users) error {
+	token, err := utils.GenerateRandomToken(verificationTokenSize)
+	if err != nil {
+		return err
+	}
+
+	expiresAt := time.Now().Add(verificationTokenTTL)
+	if err := models.CreateEmailVerification(user.UserId, token, expiresAt); err != nil {
+		return err
+	}
+
+	verifyURL := buildVerificationURL(token)
+	return utils.SendVerificationEmail(user.Email, verifyURL)
+}
+
+func buildVerificationURL(token string) string {
+	return fmt.Sprintf("%s/bblog/user/verify?token=%s", applicationBaseURL(), token)
+}
+
+func sendPasswordReset(user *models.Users) error {
+	token, err := utils.GenerateRandomToken(passwordResetTokenSize)
+	if err != nil {
+		return err
+	}
+
+	expiresAt := time.Now().Add(passwordResetTokenTTL)
+	if err := models.CreatePasswordReset(user.UserId, token, expiresAt); err != nil {
+		return err
+	}
+
+	resetURL := buildPasswordResetURL(token)
+	return utils.SendPasswordResetEmail(user.Email, resetURL)
+}
+
+func buildPasswordResetURL(token string) string {
+	return fmt.Sprintf("%s/reset-password?token=%s", applicationBaseURL(), token)
+}
+
+func applicationBaseURL() string {
+	baseURL := strings.TrimSpace(os.Getenv("APP_BASE_URL"))
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	return strings.TrimRight(baseURL, "/")
+}
+
+func verifyUserEmail(context *gin.Context) {
+	token := context.Query("token")
+	if strings.TrimSpace(token) == "" {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Missing verification token"})
+		return
+	}
+
+	if _, err := models.VerifyEmailToken(token); err != nil {
+		switch {
+		case errors.Is(err, models.ErrVerificationAlreadyUsed):
+			context.JSON(http.StatusConflict, gin.H{"message": "Verification link already used"})
+		case errors.Is(err, models.ErrVerificationTokenExpired):
+			context.JSON(http.StatusBadRequest, gin.H{"message": "Verification link has expired"})
+		case errors.Is(err, models.ErrVerificationTokenInvalid):
+			context.JSON(http.StatusBadRequest, gin.H{"message": "Invalid verification link"})
+		default:
+			context.Error(err)
+			context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not verify email"})
+		}
+		return
+	}
+
+	context.JSON(http.StatusOK, gin.H{"message": "Email verified successfully. You can now log in."})
 }
 
 func validateNewUser(user *models.Users) (int, string) {
