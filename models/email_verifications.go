@@ -27,7 +27,7 @@ func CreateEmailVerification(userID int64, token string, expiresAt time.Time) er
             created_ts = NOW()
     `
 
-	_, err := db.DB.Exec(query, hashToken(token), expiresAt)
+	_, err := db.DB.Exec(query, userID, hashToken(token), expiresAt)
 	return err
 }
 
