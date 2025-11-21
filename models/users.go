@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/devmarvs/bblog/db"
 	"github.com/devmarvs/bblog/utils"
@@ -41,8 +42,13 @@ func (u *Users) Save() error {
 		return err
 	}
 
+	var mobileValue sql.NullString
+	if strings.TrimSpace(u.Mobile) != "" {
+		mobileValue = sql.NullString{String: u.Mobile, Valid: true}
+	}
+
 	var insertedId int64
-	if err := db.DB.QueryRow(query, u.UserTypeId, u.UserName, hashedPassword, u.Email, u.Mobile, u.CountryCode, false).Scan(&insertedId); err != nil {
+	if err := db.DB.QueryRow(query, u.UserTypeId, u.UserName, hashedPassword, u.Email, mobileValue, u.CountryCode, false).Scan(&insertedId); err != nil {
 		return err
 	}
 
@@ -59,8 +65,8 @@ func GetUsers() ([]Users, error) {
             created_ts,
             user_type_id,
             email,
-            mobile,
-            country_code,
+            COALESCE(mobile, '') AS mobile,
+            COALESCE(country_code, '') AS country_code,
             is_online,
             is_active,
             is_deleted,
@@ -107,8 +113,8 @@ func GetUserById(userId int64) (*Users, error) {
             created_ts,
             user_type_id,
             email,
-            mobile,
-            country_code,
+            COALESCE(mobile, '') AS mobile,
+            COALESCE(country_code, '') AS country_code,
             is_online,
             is_active,
             is_deleted,
@@ -147,8 +153,8 @@ func GetUserByEmail(email string) (*Users, error) {
 	            created_ts,
 	            user_type_id,
 	            email,
-	            mobile,
-	            country_code,
+	            COALESCE(mobile, '') AS mobile,
+	            COALESCE(country_code, '') AS country_code,
 	            is_online,
 	            is_active,
 	            is_deleted,

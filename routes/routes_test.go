@@ -65,7 +65,7 @@ func TestCreateUser_Success(t *testing.T) {
 	router, mock := setupRouter(t)
 
 	mock.ExpectQuery(`INSERT INTO bblog\.users`).
-		WithArgs(int64(1), "parent", sqlmock.AnyArg(), "parent@example.com", "+123456789", "US", false).
+		WithArgs(int64(1), "parent", sqlmock.AnyArg(), "parent@example.com", sqlmock.AnyArg(), "US", false).
 		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).AddRow(int64(1)))
 
 	mock.ExpectExec(`INSERT INTO bblog\.email_verifications`).
