@@ -453,8 +453,17 @@ func buildPasswordResetURL(token string) string {
 func applicationBaseURL() string {
 	baseURL := strings.TrimSpace(os.Getenv("APP_BASE_URL"))
 	if baseURL == "" {
-		baseURL = "http://localhost:8080"
+		if gin.Mode() == gin.ReleaseMode {
+			baseURL = "https://api.devmarvs.com"
+		} else {
+			baseURL = "http://localhost:8080"
+		}
 	}
+
+	if gin.Mode() == gin.ReleaseMode && strings.Contains(baseURL, "localhost") {
+		baseURL = "https://api.devmarvs.com"
+	}
+
 	return strings.TrimRight(baseURL, "/")
 }
 

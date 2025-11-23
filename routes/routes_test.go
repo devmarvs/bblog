@@ -129,7 +129,7 @@ func TestLogin_Success(t *testing.T) {
 func TestResendVerification_Success(t *testing.T) {
 	router, mock := setupRouter(t)
 
-	mock.ExpectQuery(`SELECT\s+user_id,\s+username,\s+created_ts,\s+user_type_id,\s+email,\s+mobile,\s+country_code,\s+is_online,\s+is_active,\s+is_deleted,\s+is_premium\s+FROM bblog\.users`).
+	mock.ExpectQuery(`(?s)SELECT\s+user_id.*FROM\s+bblog\.users\s+WHERE email = \$1`).
 		WithArgs("parent@example.com").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
@@ -158,7 +158,7 @@ func TestResendVerification_Success(t *testing.T) {
 func TestForgotPassword_Success(t *testing.T) {
 	router, mock := setupRouter(t)
 
-	mock.ExpectQuery(`SELECT\s+user_id,\s+username,\s+created_ts,\s+user_type_id,\s+email,\s+mobile,\s+country_code,\s+is_online,\s+is_active,\s+is_deleted,\s+is_premium\s+FROM bblog\.users`).
+	mock.ExpectQuery(`(?s)SELECT\s+user_id.*FROM\s+bblog\.users\s+WHERE email = \$1`).
 		WithArgs("user@example.com").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
