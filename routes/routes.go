@@ -47,4 +47,11 @@ func RegisterRoutes(server *gin.Engine) {
 	public.POST("/user/reset-password", resetPassword)
 	public.POST("/login", login)
 
+	// alias endpoints without /bblog prefix (in case a reverse proxy strips it)
+	publicAlias := server.Group("/")
+	publicAlias.POST("/user/verify-email", resendVerificationEmail)
+	publicAlias.POST("/user/verify-email/request", resendVerificationEmail)
+	publicAlias.GET("/user/verify-email", resendVerificationEmail)
+	publicAlias.POST("/user/resend-verification", resendVerificationEmail)
+
 }
