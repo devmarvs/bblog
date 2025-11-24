@@ -48,6 +48,12 @@ Base path: `http://localhost:8080/bblog`
 | GET    | `/user/{id}/subuser`                           | Yes  | List sub-users owned by user     |
 | POST   | `/subuser/log`                                 | Yes  | Record an activity log           |
 | GET    | `/user/{id}/subuser/{subUserId}/log`           | Yes  | View logs for a specific sub-user|
+| GET    | `/user/verify`                                 | No   | Verify email address via token   |
+| POST   | `/user/resend-verification`                    | No   | Send another verification email  |
+| POST   | `/user/verify-email`                           | No   | Preferred resend endpoint (POST) |
+| GET    | `/user/verify-email`                           | No   | Resend endpoint (GET with query) |
+| POST   | `/user/forgot-password`                        | No   | Email password reset link        |
+| POST   | `/user/reset-password`                         | No   | Set new password via token       |
 | GET    | `/user/types`                                  | Yes  | List supported user types        |
 | GET    | `/log/types`                                   | Yes  | List supported log categories    |
 | POST   | `/logout`                                      | Yes  | Revoke the current JWT           |
@@ -80,11 +86,11 @@ Content-Type: application/json
 ```json
 {
   "data": null,
-  "message": "User created Successfully"
+  "message": "User created. Check your email to verify the account."
 }
 ```
 
-The response body omits the new `user_id`. Capture it by logging in (next endpoint) or querying `/bblog/user/all`.
+The response body omits the new `user_id`. Capture it by logging in (next endpoint) or querying `/bblog/user/all` after the account is verified. New accounts remain inactive until the emailed verification link (`/bblog/user/verify?token=<token>`) is opened. Links expire after 24 hours; create a new account if the link expires.
 
 ---
 
@@ -109,7 +115,134 @@ Content-Type: application/json
 }
 ```
 
-Use the returned token for subsequent protected requests.
+Use the returned token for subsequent protected requests. Attempts to log in before verifying the email return `403` with `"Please verify your email before logging in"`.
+
+---
+
+### GET `/bblog/user/verify`
+Verify a user's email using the token sent after registration. This endpoint is typically opened via the link in the email, but it also works via any HTTP client.
+
+```
+GET /bblog/user/verify?token=<token>
+```
+
+**200 OK**
+```json
+{
+  "message": "Email verified successfully. You can now log in."
+}
+```
+
+- `400 Bad Request`: token missing/invalid/expired.
+- `409 Conflict`: link already used.
+
+After a successful verification the server marks the user as active and future login attempts succeed.
+
+---
+
+### POST `/bblog/user/resend-verification`
+Legacy endpoint to trigger another verification email. Use this if the first link expired or never arrived. Prefer `/bblog/user/verify-email` (below).
+
+```http
+POST /bblog/user/resend-verification
+Content-Type: application/json
+
+{
+  "email": "parent@example.com"
+}
+```
+
+**200 OK**
+```json
+{
+  "message": "Verification email sent"
+}
+```
+
+- `400 Bad Request`: email missing or the account is already verified.
+- `500 Internal Server Error`: SMTP not configured or email could not be sent.
+
+For privacy, the endpoint replies with `200` even if the email is unknown, but the message changes only when the account is already verified.
+
+---
+
+### POST `/bblog/user/verify-email`
+Preferred resend endpoint. Accepts the same payload as `/user/resend-verification`.
+
+```http
+POST /bblog/user/verify-email
+Content-Type: application/json
+
+{
+  "email": "parent@example.com"
+}
+```
+
+**200 OK**
+```json
+{
+  "message": "Verification email sent"
+}
+```
+
+- `400 Bad Request`: email missing or the account is already verified.
+- `500 Internal Server Error`: SMTP not configured or email could not be sent.
+
+You can also call `GET /bblog/user/verify-email?email=parent@example.com` without a body if that is easier for your client; it returns the same responses and does not require authentication.
+
+---
+
+### POST `/bblog/user/forgot-password`
+Send a password reset link to the supplied email. The response is the same whether the account exists or not.
+
+```http
+POST /bblog/user/forgot-password
+Content-Type: application/json
+
+{
+  "email": "parent@example.com"
+}
+```
+
+**200 OK**
+```json
+{
+  "message": "If the account exists, a reset email has been sent"
+}
+```
+
+- `400 Bad Request`: email missing or invalid JSON payload.
+- `500 Internal Server Error`: SMTP not configured or email could not be sent.
+
+The link expires after one hour; request another email if it lapses.
+
+---
+
+### POST `/bblog/user/reset-password`
+Complete the reset by posting the token from the email together with the new password.
+
+```http
+POST /bblog/user/reset-password
+Content-Type: application/json
+
+{
+  "token": "<reset-token>",
+  "password": "StrongerP@ssw0rd"
+}
+```
+
+**200 OK**
+```json
+{
+  "message": "Password updated successfully"
+}
+```
+
+- `400 Bad Request`: token missing/invalid/expired or password too short.
+- `409 Conflict`: token already used.
+- `500 Internal Server Error`: unexpected error while updating the password.
+
+Tokens are single-use. After a successful reset the user can log in immediately with the new password.
 
 ---
 

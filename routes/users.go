@@ -57,16 +57,12 @@ func createUser(context *gin.Context) {
 }
 
 func forgotPassword(context *gin.Context) {
-	var payload struct {
-		Email string `json:"email"`
-	}
-
-	if err := context.ShouldBindJSON(&payload); err != nil {
+	email, err := extractEmail(context)
+	if err != nil {
 		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
 		return
 	}
 
-	email := strings.ToLower(strings.TrimSpace(payload.Email))
 	if email == "" {
 		context.JSON(http.StatusBadRequest, gin.H{"message": "Email is required"})
 		return
@@ -142,16 +138,12 @@ func resetPassword(context *gin.Context) {
 }
 
 func resendVerificationEmail(context *gin.Context) {
-	var payload struct {
-		Email string `json:"email"`
-	}
-
-	if err := context.ShouldBindJSON(&payload); err != nil {
+	email, err := extractEmail(context)
+	if err != nil {
 		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
 		return
 	}
 
-	email := strings.ToLower(strings.TrimSpace(payload.Email))
 	if email == "" {
 		context.JSON(http.StatusBadRequest, gin.H{"message": "Email is required"})
 		return
@@ -448,6 +440,26 @@ func sendPasswordReset(user *models.Users) error {
 
 func buildPasswordResetURL(token string) string {
 	return fmt.Sprintf("%s/reset-password?token=%s", applicationBaseURL(), token)
+}
+
+func extractEmail(context *gin.Context) (string, error) {
+	if email := strings.ToLower(strings.TrimSpace(context.Query("email"))); email != "" {
+		return email, nil
+	}
+
+	var payload struct {
+		Email string `json:"email"`
+	}
+
+	if context.Request.ContentLength == 0 && context.Request.Method == http.MethodGet {
+		return "", nil
+	}
+
+	if err := context.ShouldBindJSON(&payload); err != nil {
+		return "", err
+	}
+
+	return strings.ToLower(strings.TrimSpace(payload.Email)), nil
 }
 
 func applicationBaseURL() string {

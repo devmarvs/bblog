@@ -155,6 +155,62 @@ func TestResendVerification_Success(t *testing.T) {
 	}
 }
 
+func TestVerifyEmailEndpoint_Post_Success(t *testing.T) {
+	router, mock := setupRouter(t)
+
+	mock.ExpectQuery(`(?s)SELECT\s+user_id.*FROM\s+bblog\.users\s+WHERE email = \$1`).
+		WithArgs("parent@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
+		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, false, false, false))
+
+	mock.ExpectExec(`INSERT INTO bblog\.email_verifications`).
+		WithArgs(int64(1), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	payload := `{"email":"parent@example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/bblog/user/verify-email", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body: %s", w.Code, w.Body.String())
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestVerifyEmailEndpoint_Get_Success(t *testing.T) {
+	router, mock := setupRouter(t)
+
+	mock.ExpectQuery(`(?s)SELECT\s+user_id.*FROM\s+bblog\.users\s+WHERE email = \$1`).
+		WithArgs("parent@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
+		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, false, false, false))
+
+	mock.ExpectExec(`INSERT INTO bblog\.email_verifications`).
+		WithArgs(int64(1), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	req := httptest.NewRequest(http.MethodGet, "/bblog/user/verify-email?email=parent@example.com", nil)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body: %s", w.Code, w.Body.String())
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
 func TestForgotPassword_Success(t *testing.T) {
 	router, mock := setupRouter(t)
 
