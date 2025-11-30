@@ -43,6 +43,7 @@ func RegisterRoutes(server *gin.Engine) {
 	public.POST("/user/verify-email/request", resendVerificationEmail)
 	public.GET("/user/verify-email", resendVerificationEmail)
 	public.GET("/user/verify", verifyUserEmail)
+	public.POST("/user/verify", verifyUserEmail)
 	public.POST("/user/forgot-password", forgotPassword)
 	public.POST("/user/reset-password", resetPassword)
 	public.POST("/login", login)
@@ -53,5 +54,7 @@ func RegisterRoutes(server *gin.Engine) {
 	publicAlias.POST("/user/verify-email/request", resendVerificationEmail)
 	publicAlias.GET("/user/verify-email", resendVerificationEmail)
 	publicAlias.POST("/user/resend-verification", resendVerificationEmail)
+	publicAlias.GET("/user/verify", verifyUserEmail)
+	publicAlias.POST("/user/verify", verifyUserEmail)
 
 }

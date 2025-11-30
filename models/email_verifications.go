@@ -10,12 +10,17 @@ import (
 )
 
 var (
-	ErrVerificationTokenInvalid = errors.New("invalid verification token")
-	ErrVerificationTokenExpired = errors.New("verification token expired")
-	ErrVerificationAlreadyUsed  = errors.New("verification token already used")
+	ErrVerificationCodeInvalid = errors.New("invalid verification code")
+	ErrVerificationCodeExpired = errors.New("verification code expired")
+	ErrVerificationAlreadyUsed = errors.New("verification code already used")
 )
 
-func CreateEmailVerification(userID int64, token string, expiresAt time.Time) error {
+func CreateEmailVerification(userID int64, code string, expiresAt time.Time) error {
+	sanitizedCode := strings.TrimSpace(code)
+	if userID <= 0 || sanitizedCode == "" {
+		return ErrVerificationCodeInvalid
+	}
+
 	const query = `
         INSERT INTO bblog.email_verifications(user_id, token_hash, expires_at)
         VALUES ($1, $2, $3)
@@ -27,52 +32,53 @@ func CreateEmailVerification(userID int64, token string, expiresAt time.Time) er
             created_ts = NOW()
     `
 
-	_, err := db.DB.Exec(query, userID, hashToken(token), expiresAt)
+	_, err := db.DB.Exec(query, userID, hashToken(sanitizedCode), expiresAt)
 	return err
 }
 
-func VerifyEmailToken(token string) (int64, error) {
-	if strings.TrimSpace(token) == "" {
-		return 0, ErrVerificationTokenInvalid
+func VerifyEmailCode(userID int64, code string) error {
+	sanitizedCode := strings.TrimSpace(code)
+	if userID <= 0 || sanitizedCode == "" {
+		return ErrVerificationCodeInvalid
 	}
 
 	const selectQuery = `
-        SELECT user_id, expires_at, consumed_at
+        SELECT token_hash, expires_at, consumed_at
         FROM bblog.email_verifications
-        WHERE token_hash = $1
+        WHERE user_id = $1
     `
 
 	var (
-		userID    int64
+		tokenHash string
 		expiresAt time.Time
 		consumed  sql.NullTime
 	)
 
-	err := db.DB.QueryRow(selectQuery, hashToken(token)).Scan(&userID, &expiresAt, &consumed)
+	err := db.DB.QueryRow(selectQuery, userID).Scan(&tokenHash, &expiresAt, &consumed)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return 0, ErrVerificationTokenInvalid
+			return ErrVerificationCodeInvalid
 		}
-		return 0, err
+		return err
 	}
 
 	if consumed.Valid {
-		return 0, ErrVerificationAlreadyUsed
+		return ErrVerificationAlreadyUsed
 	}
 
 	if expiresAt.Before(time.Now()) {
-		return 0, ErrVerificationTokenExpired
+		return ErrVerificationCodeExpired
+	}
+
+	if tokenHash != hashToken(sanitizedCode) {
+		return ErrVerificationCodeInvalid
 	}
 
 	if err := markVerificationUsed(userID); err != nil {
-		return 0, err
+		return err
 	}
 
-	if err := activateUser(userID); err != nil {
-		return 0, err
-	}
-
-	return userID, nil
+	return activateUser(userID)
 }
 
 func markVerificationUsed(userID int64) error {

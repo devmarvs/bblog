@@ -2,7 +2,9 @@ package routes
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -225,6 +227,45 @@ func TestVerifyEmailEndpoint_AliasWithoutPrefix(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	req := httptest.NewRequest(http.MethodPost, "/user/verify-email", bytes.NewBufferString(`{"email":"parent@example.com"}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body: %s", w.Code, w.Body.String())
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestVerifyUserEmail_WithCode(t *testing.T) {
+	router, mock := setupRouter(t)
+
+	hashed := sha256.Sum256([]byte("123456"))
+
+	mock.ExpectQuery(`(?s)SELECT\s+user_id.*FROM\s+bblog\.users\s+WHERE email = \$1`).
+		WithArgs("parent@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
+		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, false, false, false))
+
+	mock.ExpectQuery(`SELECT token_hash, expires_at, consumed_at FROM bblog\.email_verifications WHERE user_id = \$1`).
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"token_hash", "expires_at", "consumed_at"}).
+			AddRow(hex.EncodeToString(hashed[:]), time.Now().Add(2*time.Minute), nil))
+
+	mock.ExpectExec(`UPDATE bblog\.email_verifications`).
+		WithArgs(int64(1)).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	mock.ExpectExec(`UPDATE bblog\.users`).
+		WithArgs(int64(1)).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	req := httptest.NewRequest(http.MethodPost, "/bblog/user/verify", bytes.NewBufferString(`{"email":"parent@example.com","code":"123456"}`))
 	req.Header.Set("Content-Type", "application/json")
 
 	w := httptest.NewRecorder()

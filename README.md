@@ -48,8 +48,9 @@ Base path: `http://localhost:8080/bblog`
 | GET    | `/user/{id}/subuser`                           | Yes  | List sub-users owned by user     |
 | POST   | `/subuser/log`                                 | Yes  | Record an activity log           |
 | GET    | `/user/{id}/subuser/{subUserId}/log`           | Yes  | View logs for a specific sub-user|
-| GET    | `/user/verify`                                 | No   | Verify email address via token   |
-| POST   | `/user/resend-verification`                    | No   | Send another verification email  |
+| POST   | `/user/verify`                                 | No   | Verify email with a code         |
+| GET    | `/user/verify`                                 | No   | Alternate verify using query     |
+| POST   | `/user/resend-verification`                    | No   | Send another verification code   |
 | POST   | `/user/verify-email`                           | No   | Preferred resend endpoint (POST) |
 | GET    | `/user/verify-email`                           | No   | Resend endpoint (GET with query) |
 | POST   | `/user/forgot-password`                        | No   | Email password reset link        |
@@ -86,11 +87,11 @@ Content-Type: application/json
 ```json
 {
   "data": null,
-  "message": "User created. Check your email to verify the account."
+  "message": "User created. Check your email for the verification code."
 }
 ```
 
-The response body omits the new `user_id`. Capture it by logging in (next endpoint) or querying `/bblog/user/all` after the account is verified. New accounts remain inactive until the emailed verification link (`/bblog/user/verify?token=<token>`) is opened. Links expire after 24 hours; create a new account if the link expires.
+The response body omits the new `user_id`. Capture it by logging in (next endpoint) or querying `/bblog/user/all` after the account is verified. New accounts remain inactive until the emailed verification code is confirmed. Codes expire after **5 minutes**; request a new code if it lapses.
 
 ---
 
@@ -119,11 +120,22 @@ Use the returned token for subsequent protected requests. Attempts to log in bef
 
 ---
 
-### GET `/bblog/user/verify`
-Verify a user's email using the token sent after registration. This endpoint is typically opened via the link in the email, but it also works via any HTTP client.
+### POST `/bblog/user/verify`
+Verify a user's email using the 6-digit code sent after registration. POST JSON (preferred) or supply `email` and `code` as query parameters (GET/POST both work).
 
+```http
+POST /bblog/user/verify
+Content-Type: application/json
+
+{
+  "email": "parent@example.com",
+  "code": "123456"
+}
 ```
-GET /bblog/user/verify?token=<token>
+
+Query alternative:
+```
+GET /bblog/user/verify?email=parent@example.com&code=123456
 ```
 
 **200 OK**
@@ -133,15 +145,15 @@ GET /bblog/user/verify?token=<token>
 }
 ```
 
-- `400 Bad Request`: token missing/invalid/expired.
-- `409 Conflict`: link already used.
+- `400 Bad Request`: email/code missing, invalid, or expired (codes last 5 minutes).
+- `409 Conflict`: code already used or account already verified.
 
 After a successful verification the server marks the user as active and future login attempts succeed.
 
 ---
 
 ### POST `/bblog/user/resend-verification`
-Legacy endpoint to trigger another verification email. Use this if the first link expired or never arrived. Prefer `/bblog/user/verify-email` (below).
+Legacy endpoint to trigger another verification code email. Use this if the first code expired or never arrived. Prefer `/bblog/user/verify-email` (below).
 
 ```http
 POST /bblog/user/resend-verification
@@ -155,7 +167,7 @@ Content-Type: application/json
 **200 OK**
 ```json
 {
-  "message": "Verification email sent"
+  "message": "Verification code sent"
 }
 ```
 
@@ -167,7 +179,7 @@ For privacy, the endpoint replies with `200` even if the email is unknown, but t
 ---
 
 ### POST `/bblog/user/verify-email`
-Preferred resend endpoint. Accepts the same payload as `/user/resend-verification`.
+Preferred resend endpoint for verification codes. Accepts the same payload as `/user/resend-verification`.
 
 ```http
 POST /bblog/user/verify-email
@@ -181,7 +193,7 @@ Content-Type: application/json
 **200 OK**
 ```json
 {
-  "message": "Verification email sent"
+  "message": "Verification code sent"
 }
 ```
 

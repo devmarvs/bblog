@@ -17,8 +17,8 @@ import (
 
 const (
 	minPasswordLength      = 8
-	verificationTokenSize  = 32
-	verificationTokenTTL   = 24 * time.Hour
+	verificationCodeLength = 6
+	verificationCodeTTL    = 5 * time.Minute
 	passwordResetTokenSize = 32
 	passwordResetTokenTTL  = 1 * time.Hour
 )
@@ -53,7 +53,7 @@ func createUser(context *gin.Context) {
 		return
 	}
 
-	context.JSON(http.StatusCreated, gin.H{"data": nil, "message": "User created. Check your email to verify the account."})
+	context.JSON(http.StatusCreated, gin.H{"data": nil, "message": "User created. Check your email for the verification code."})
 }
 
 func forgotPassword(context *gin.Context) {
@@ -152,7 +152,7 @@ func resendVerificationEmail(context *gin.Context) {
 	user, err := models.GetUserByEmail(email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			context.JSON(http.StatusOK, gin.H{"message": "If the account exists, a verification email has been sent"})
+			context.JSON(http.StatusOK, gin.H{"message": "If the account exists, a verification code has been sent"})
 			return
 		}
 
@@ -176,7 +176,7 @@ func resendVerificationEmail(context *gin.Context) {
 		return
 	}
 
-	context.JSON(http.StatusOK, gin.H{"message": "Verification email sent"})
+	context.JSON(http.StatusOK, gin.H{"message": "Verification code sent"})
 }
 
 func getUsers(context *gin.Context) {
@@ -405,22 +405,17 @@ func sanitizeSubUserPayload(subUser *models.SubUsers) {
 }
 
 func sendVerification(user *models.Users) error {
-	token, err := utils.GenerateRandomToken(verificationTokenSize)
+	code, err := utils.GenerateNumericCode(verificationCodeLength)
 	if err != nil {
 		return err
 	}
 
-	expiresAt := time.Now().Add(verificationTokenTTL)
-	if err := models.CreateEmailVerification(user.UserId, token, expiresAt); err != nil {
+	expiresAt := time.Now().Add(verificationCodeTTL)
+	if err := models.CreateEmailVerification(user.UserId, code, expiresAt); err != nil {
 		return err
 	}
 
-	verifyURL := buildVerificationURL(token)
-	return utils.SendVerificationEmail(user.Email, verifyURL)
-}
-
-func buildVerificationURL(token string) string {
-	return fmt.Sprintf("%s/bblog/user/verify?token=%s", applicationBaseURL(), token)
+	return utils.SendVerificationEmail(user.Email, code, verificationCodeTTL)
 }
 
 func sendPasswordReset(user *models.Users) error {
@@ -440,6 +435,29 @@ func sendPasswordReset(user *models.Users) error {
 
 func buildPasswordResetURL(token string) string {
 	return fmt.Sprintf("%s/reset-password?token=%s", applicationBaseURL(), token)
+}
+
+func extractVerificationPayload(context *gin.Context) (string, string, error) {
+	email := strings.ToLower(strings.TrimSpace(context.Query("email")))
+	code := strings.TrimSpace(context.Query("code"))
+	if email != "" || code != "" {
+		return email, code, nil
+	}
+
+	if context.Request.ContentLength == 0 {
+		return "", "", nil
+	}
+
+	var payload struct {
+		Email string `json:"email"`
+		Code  string `json:"code"`
+	}
+
+	if err := context.ShouldBindJSON(&payload); err != nil {
+		return "", "", err
+	}
+
+	return strings.ToLower(strings.TrimSpace(payload.Email)), strings.TrimSpace(payload.Code), nil
 }
 
 func extractEmail(context *gin.Context) (string, error) {
@@ -480,20 +498,42 @@ func applicationBaseURL() string {
 }
 
 func verifyUserEmail(context *gin.Context) {
-	token := context.Query("token")
-	if strings.TrimSpace(token) == "" {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Missing verification token"})
+	email, code, err := extractVerificationPayload(context)
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
 		return
 	}
 
-	if _, err := models.VerifyEmailToken(token); err != nil {
+	if email == "" || code == "" {
+		context.JSON(http.StatusBadRequest, gin.H{"message": "Email and verification code are required"})
+		return
+	}
+
+	user, err := models.GetUserByEmail(email)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			context.JSON(http.StatusBadRequest, gin.H{"message": "Invalid verification code"})
+			return
+		}
+
+		context.Error(err)
+		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not verify email"})
+		return
+	}
+
+	if user.IsActive {
+		context.JSON(http.StatusConflict, gin.H{"message": "Account already verified"})
+		return
+	}
+
+	if err := models.VerifyEmailCode(user.UserId, code); err != nil {
 		switch {
 		case errors.Is(err, models.ErrVerificationAlreadyUsed):
-			context.JSON(http.StatusConflict, gin.H{"message": "Verification link already used"})
-		case errors.Is(err, models.ErrVerificationTokenExpired):
-			context.JSON(http.StatusBadRequest, gin.H{"message": "Verification link has expired"})
-		case errors.Is(err, models.ErrVerificationTokenInvalid):
-			context.JSON(http.StatusBadRequest, gin.H{"message": "Invalid verification link"})
+			context.JSON(http.StatusConflict, gin.H{"message": "Verification code already used"})
+		case errors.Is(err, models.ErrVerificationCodeExpired):
+			context.JSON(http.StatusBadRequest, gin.H{"message": "Verification code has expired"})
+		case errors.Is(err, models.ErrVerificationCodeInvalid):
+			context.JSON(http.StatusBadRequest, gin.H{"message": "Invalid verification code"})
 		default:
 			context.Error(err)
 			context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not verify email"})

@@ -6,6 +6,7 @@ import (
 	"net/smtp"
 	"os"
 	"strings"
+	"time"
 )
 
 var ErrMissingSMTPConfig = errors.New("smtp configuration incomplete")
@@ -22,9 +23,13 @@ func SetSendMail(fn func(addr string, a smtp.Auth, from string, to []string, msg
 	smtpSendMail = fn
 }
 
-func SendVerificationEmail(toEmail, verifyURL string) error {
+func SendVerificationEmail(toEmail, code string, expiresIn time.Duration) error {
 	subject := "Verify your bblog account"
-	body := fmt.Sprintf("Hello,\n\nPlease verify your bblog account by clicking the link below.\n\n%s\n\nIf you did not create this account, you can ignore this email.\n", verifyURL)
+	body := fmt.Sprintf(
+		"Hello,\n\nHere is your bblog verification code: %s\nThis code expires in %d minutes.\n\nIf you did not create this account, you can ignore this email.\n",
+		code,
+		int64(expiresIn.Minutes()),
+	)
 	return sendEmail(toEmail, subject, body)
 }
 
