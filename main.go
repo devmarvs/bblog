@@ -16,6 +16,12 @@ func main() {
 		log.Fatalf("unable to create uploads directory: %v", err)
 	}
 
+	mode := os.Getenv("GIN_MODE")
+	if mode == "" {
+		mode = gin.DebugMode // Default to debug if GIN_MODE is not set
+	}
+	gin.SetMode(mode)
+
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatal("Error loading .env file")
@@ -23,12 +29,6 @@ func main() {
 
 	db.InitDb()
 	server := gin.Default()
-
-	mode := os.Getenv("GIN_MODE")
-	if mode == "" {
-		mode = gin.DebugMode // Default to debug if GIN_MODE is not set
-	}
-	gin.SetMode(mode)
 
 	err = server.SetTrustedProxies(nil) // Disable trusting proxy headers by default
 	// err = server.SetTrustedProxies([]string{"192.168.0.1", "10.0.0.0/8"})

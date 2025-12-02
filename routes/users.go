@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -196,20 +195,8 @@ func getUsers(context *gin.Context) {
 }
 
 func getUserById(context *gin.Context) {
-	userId, err := strconv.ParseInt(context.Param("id"), 10, 64)
-	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse user id"})
-		return
-	}
-
-	authUserID, ok := context.Get("userId")
+	userId, ok := requireSameUser(context, "id")
 	if !ok {
-		context.JSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
-		return
-	}
-
-	if authID, ok := authUserID.(int64); !ok || authID != userId {
-		context.JSON(http.StatusForbidden, gin.H{"data": nil, "message": "Not Authorized"})
 		return
 	}
 
@@ -229,20 +216,8 @@ func getUserById(context *gin.Context) {
 }
 
 func createSubUser(context *gin.Context) {
-	userId, err := strconv.ParseInt(context.Param("id"), 10, 64)
-	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse user id"})
-		return
-	}
-
-	authUserID, ok := context.Get("userId")
+	userId, ok := requireSameUser(context, "id")
 	if !ok {
-		context.JSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
-		return
-	}
-
-	if authID, ok := authUserID.(int64); !ok || authID != userId {
-		context.JSON(http.StatusForbidden, gin.H{"data": nil, "message": "Not Authorized"})
 		return
 	}
 
@@ -279,20 +254,8 @@ func createSubUser(context *gin.Context) {
 }
 
 func getSubUserByUser(context *gin.Context) {
-	userId, err := strconv.ParseInt(context.Param("id"), 10, 64)
-	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse user id"})
-		return
-	}
-
-	authUserID, ok := context.Get("userId")
+	userId, ok := requireSameUser(context, "id")
 	if !ok {
-		context.JSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
-		return
-	}
-
-	if authID, ok := authUserID.(int64); !ok || authID != userId {
-		context.JSON(http.StatusForbidden, gin.H{"data": nil, "message": "Not Authorized"})
 		return
 	}
 

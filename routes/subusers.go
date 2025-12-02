@@ -65,21 +65,8 @@ func createLog(context *gin.Context) {
 }
 
 func getLogByUser(context *gin.Context) {
-	userId, err := strconv.ParseInt(context.Param("id"), 10, 64)
-	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse user id"})
-		return
-	}
-
-	authUserID, ok := context.Get("userId")
+	userId, ok := requireSameUser(context, "id")
 	if !ok {
-		context.JSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
-		return
-	}
-
-	authenticatedID, ok := authUserID.(int64)
-	if !ok || authenticatedID != userId {
-		context.JSON(http.StatusForbidden, gin.H{"data": nil, "message": "Not Authorized"})
 		return
 	}
 
@@ -112,7 +99,7 @@ func getLogByUser(context *gin.Context) {
 		return
 	}
 
-	if subUser.UserId != authenticatedID || !subUser.IsActive || subUser.IsDeleted {
+	if subUser.UserId != userId || !subUser.IsActive || subUser.IsDeleted {
 		context.JSON(http.StatusForbidden, gin.H{"data": nil, "message": "Not Authorized"})
 		return
 	}
