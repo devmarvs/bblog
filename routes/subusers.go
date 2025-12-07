@@ -5,51 +5,44 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/devmarvs/bblog/models"
 	"github.com/gin-gonic/gin"
 )
 
 func createLog(context *gin.Context) {
-	authUserID, ok := context.Get("userId")
+	authenticatedID, ok := getAuthenticatedUserID(context)
 	if !ok {
-		context.JSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
-		return
-	}
-
-	authenticatedID, ok := authUserID.(int64)
-	if !ok {
-		context.JSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
+		respondUnauthorized(context)
 		return
 	}
 
 	var userLog models.UserLog
 	if err := context.ShouldBindJSON(&userLog); err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse request data"})
+		respondBadRequest(context, ErrRequestDataParse)
 		return
 	}
 
 	sanitizeUserLog(&userLog)
 	if status, message := validateUserLog(&userLog); status != 0 {
-		context.JSON(status, gin.H{"data": nil, "message": message})
+		respondWithError(context, status, message)
 		return
 	}
 
 	subUser, err := models.GetSubUserById(userLog.SubUserId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			context.JSON(http.StatusNotFound, gin.H{"data": nil, "message": "Sub user not found"})
+			respondNotFound(context, ErrSubUserNotFound)
 			return
 		}
 
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch sub user"})
+		respondInternalServerErrorWithData(context, ErrFetchSubUser)
 		return
 	}
 
 	if subUser.UserId != authenticatedID || !subUser.IsActive || subUser.IsDeleted {
-		context.JSON(http.StatusForbidden, gin.H{"data": nil, "message": "Not Authorized"})
+		respondForbidden(context)
 		return
 	}
 
@@ -57,87 +50,70 @@ func createLog(context *gin.Context) {
 
 	if err := userLog.Save(); err != nil {
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not save user log"})
+		respondInternalServerErrorWithData(context, ErrSaveUserLog)
 		return
 	}
 
-	context.JSON(http.StatusCreated, gin.H{"data": userLog, "message": "User log created successfully"})
+	respondWithDataAndMessage(context, http.StatusCreated, userLog, "User log created successfully")
 }
 
 func getLogByUser(context *gin.Context) {
-	userId, ok := requireSameUser(context, "id")
-	if !ok {
+	userId := extractAndVerifyUserID(context)
+	if userId == 0 {
 		return
 	}
 
 	subUserId, err := strconv.ParseInt(context.Param("subuserid"), 10, 64)
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse sub user id"})
+		respondBadRequest(context, ErrParseSubUserID)
 		return
 	}
 
 	if _, err := models.GetUserById(userId); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			context.JSON(http.StatusNotFound, gin.H{"data": nil, "message": "User not found"})
+			respondNotFound(context, ErrUserNotFound)
 			return
 		}
 
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch user"})
+		respondInternalServerErrorWithData(context, ErrFetchUser)
 		return
 	}
 
 	subUser, err := models.GetSubUserById(subUserId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			context.JSON(http.StatusNotFound, gin.H{"data": nil, "message": "Sub user not found"})
+			respondNotFound(context, ErrSubUserNotFound)
 			return
 		}
 
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch sub user"})
+		respondInternalServerErrorWithData(context, ErrFetchSubUser)
 		return
 	}
 
 	if subUser.UserId != userId || !subUser.IsActive || subUser.IsDeleted {
-		context.JSON(http.StatusForbidden, gin.H{"data": nil, "message": "Not Authorized"})
+		respondForbidden(context)
 		return
 	}
 
 	user, err := models.GetLogByUserAndSubUser(userId, subUserId)
 	if err != nil {
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch user log"})
+		respondInternalServerErrorWithData(context, ErrFetchUserLog)
 		return
 	}
 
-	context.JSON(http.StatusOK, gin.H{"data": user})
-}
-
-func sanitizeUserLog(userLog *models.UserLog) {
-	userLog.LogDescription = strings.TrimSpace(userLog.LogDescription)
-	userLog.LogTime = strings.TrimSpace(userLog.LogTime)
-}
-
-func validateUserLog(userLog *models.UserLog) (int, string) {
-	if userLog.SubUserId <= 0 {
-		return http.StatusBadRequest, "Invalid sub user id"
-	}
-
-	if userLog.LogTypeId <= 0 {
-		return http.StatusBadRequest, "Invalid log type id"
-	}
-
-	return 0, ""
+	respondWithData(context, http.StatusOK, user)
 }
 
 func listLogTypes(context *gin.Context) {
 	logTypes, err := models.ListLogTypes()
 	if err != nil {
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch log types"})
+		respondInternalServerErrorWithData(context, ErrFetchLogTypes)
 		return
 	}
 
-	context.JSON(http.StatusOK, gin.H{"data": logTypes})
+	respondWithData(context, http.StatusOK, logTypes)
 }

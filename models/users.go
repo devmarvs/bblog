@@ -14,6 +14,20 @@ var (
 	ErrEmailNotVerified   = errors.New("email not verified")
 )
 
+const userSelectColumns = `
+	user_id,
+	username,
+	created_ts,
+	user_type_id,
+	email,
+	COALESCE(mobile, '') AS mobile,
+	COALESCE(country_code, '') AS country_code,
+	is_online,
+	is_active,
+	is_deleted,
+	is_premium
+`
+
 type Users struct {
 	UserId      int64  `json:"user_id"`
 	CreatedTs   string `json:"created_ts"`
@@ -59,18 +73,7 @@ func (u *Users) Save() error {
 
 func GetUsers() ([]Users, error) {
 	query := `
-        SELECT
-            user_id,
-            username,
-            created_ts,
-            user_type_id,
-            email,
-            COALESCE(mobile, '') AS mobile,
-            COALESCE(country_code, '') AS country_code,
-            is_online,
-            is_active,
-            is_deleted,
-            is_premium
+        SELECT ` + userSelectColumns + `
         FROM bblog.users
         WHERE is_active IS TRUE
             AND is_deleted IS FALSE
@@ -107,18 +110,7 @@ func GetUsers() ([]Users, error) {
 
 func GetUserById(userId int64) (*Users, error) {
 	query := `
-	        SELECT
-            user_id,
-            username,
-            created_ts,
-            user_type_id,
-            email,
-            COALESCE(mobile, '') AS mobile,
-            COALESCE(country_code, '') AS country_code,
-            is_online,
-            is_active,
-            is_deleted,
-            is_premium
+	        SELECT ` + userSelectColumns + `
         FROM bblog.users
         WHERE user_id = $1
             AND is_deleted IS FALSE
@@ -147,18 +139,7 @@ func GetUserById(userId int64) (*Users, error) {
 
 func GetUserByEmail(email string) (*Users, error) {
 	query := `
-	        SELECT
-	            user_id,
-	            username,
-	            created_ts,
-	            user_type_id,
-	            email,
-	            COALESCE(mobile, '') AS mobile,
-	            COALESCE(country_code, '') AS country_code,
-	            is_online,
-	            is_active,
-	            is_deleted,
-	            is_premium
+	        SELECT ` + userSelectColumns + `
 	        FROM bblog.users
 	        WHERE email = $1
 	            AND is_deleted IS FALSE

@@ -14,18 +14,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	minPasswordLength      = 8
-	verificationCodeLength = 6
-	verificationCodeTTL    = 5 * time.Minute
-	passwordResetTokenSize = 32
-	passwordResetTokenTTL  = 1 * time.Hour
-)
-
 func createUser(context *gin.Context) {
 	var user models.Users
 	if err := context.ShouldBindJSON(&user); err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse request data"})
+		respondBadRequest(context, ErrRequestDataParse)
 		return
 	}
 
@@ -43,12 +35,7 @@ func createUser(context *gin.Context) {
 	}
 
 	if err := sendVerification(&user); err != nil {
-		context.Error(err)
-		message := "Could not send verification email"
-		if errors.Is(err, utils.ErrMissingSMTPConfig) {
-			message = "Email service is not configured"
-		}
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": message})
+		handleEmailError(context, err, ErrVerificationSend)
 		return
 	}
 
@@ -77,17 +64,12 @@ func forgotPassword(context *gin.Context) {
 		}
 
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not process password reset"})
+		respondInternalServerError(context, ErrPasswordResetProcess)
 		return
 	}
 
 	if err := sendPasswordReset(user); err != nil {
-		context.Error(err)
-		message := "Could not send password reset email"
-		if errors.Is(err, utils.ErrMissingSMTPConfig) {
-			message = "Email service is not configured"
-		}
-		context.JSON(http.StatusInternalServerError, gin.H{"message": message})
+		handleEmailError(context, err, ErrPasswordResetSend)
 		return
 	}
 
@@ -101,7 +83,7 @@ func resetPassword(context *gin.Context) {
 	}
 
 	if err := context.ShouldBindJSON(&payload); err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
+		respondBadRequest(context, ErrRequestDataParse)
 		return
 	}
 
@@ -109,26 +91,26 @@ func resetPassword(context *gin.Context) {
 	payload.Token = strings.TrimSpace(payload.Token)
 
 	if payload.Token == "" {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Reset token is required"})
+		respondBadRequest(context, ErrResetTokenRequired)
 		return
 	}
 
-	if len(payload.Password) < minPasswordLength {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Password must be at least 8 characters long"})
+	if len(payload.Password) < MinPasswordLength {
+		respondBadRequest(context, ErrPasswordLength)
 		return
 	}
 
 	if err := models.ResetPassword(payload.Token, payload.Password); err != nil {
 		switch {
 		case errors.Is(err, models.ErrPasswordResetTokenInvalid):
-			context.JSON(http.StatusBadRequest, gin.H{"message": "Invalid reset token"})
+			respondBadRequest(context, ErrInvalidResetToken)
 		case errors.Is(err, models.ErrPasswordResetTokenExpired):
-			context.JSON(http.StatusBadRequest, gin.H{"message": "Reset link has expired"})
+			respondBadRequest(context, ErrExpiredResetLink)
 		case errors.Is(err, models.ErrPasswordResetTokenUsed):
-			context.JSON(http.StatusConflict, gin.H{"message": "Reset link already used"})
+			context.JSON(http.StatusConflict, gin.H{"message": ErrUsedResetLink})
 		default:
 			context.Error(err)
-			context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not reset password"})
+			respondInternalServerError(context, ErrPasswordReset)
 		}
 		return
 	}
@@ -139,12 +121,12 @@ func resetPassword(context *gin.Context) {
 func resendVerificationEmail(context *gin.Context) {
 	email, err := extractEmail(context)
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
+		respondBadRequest(context, ErrRequestDataParse)
 		return
 	}
 
 	if email == "" {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Email is required"})
+		respondBadRequest(context, ErrEmailRequired)
 		return
 	}
 
@@ -156,22 +138,17 @@ func resendVerificationEmail(context *gin.Context) {
 		}
 
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not resend verification email"})
+		respondInternalServerError(context, ErrResendVerification)
 		return
 	}
 
 	if user.IsActive {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Account is already verified"})
+		respondBadRequest(context, ErrAccountAlreadyVerified)
 		return
 	}
 
 	if err := sendVerification(user); err != nil {
-		context.Error(err)
-		message := "Could not send verification email"
-		if errors.Is(err, utils.ErrMissingSMTPConfig) {
-			message = "Email service is not configured"
-		}
-		context.JSON(http.StatusInternalServerError, gin.H{"message": message})
+		handleEmailError(context, err, ErrVerificationSend)
 		return
 	}
 
@@ -182,113 +159,113 @@ func getUsers(context *gin.Context) {
 	users, err := models.GetUsers()
 	if err != nil {
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not fetch users. Try again later"})
+		respondInternalServerError(context, ErrFetchUsers)
 		return
 	}
 
 	if len(users) == 0 {
-		context.JSON(http.StatusOK, gin.H{"data": nil})
+		respondWithData(context, http.StatusOK, nil)
 		return
 	}
 
-	context.JSON(http.StatusOK, gin.H{"data": users})
+	respondWithData(context, http.StatusOK, users)
 }
 
 func getUserById(context *gin.Context) {
-	userId, ok := requireSameUser(context, "id")
-	if !ok {
+	userId := extractAndVerifyUserID(context)
+	if userId == 0 {
 		return
 	}
 
 	user, err := models.GetUserById(userId)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			context.JSON(http.StatusNotFound, gin.H{"data": nil, "message": "User not found"})
+			respondNotFound(context, ErrUserNotFound)
 			return
 		}
 
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch user"})
+		respondInternalServerErrorWithData(context, ErrFetchUser)
 		return
 	}
 
-	context.JSON(http.StatusOK, gin.H{"data": user})
+	respondWithData(context, http.StatusOK, user)
 }
 
 func createSubUser(context *gin.Context) {
-	userId, ok := requireSameUser(context, "id")
-	if !ok {
+	userId := extractAndVerifyUserID(context)
+	if userId == 0 {
 		return
 	}
 
 	if _, err := models.GetUserById(userId); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			context.JSON(http.StatusNotFound, gin.H{"data": nil, "message": "User not found"})
+			respondNotFound(context, ErrUserNotFound)
 			return
 		}
 
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch user"})
+		respondInternalServerErrorWithData(context, ErrFetchUser)
 		return
 	}
 
 	var subUser models.SubUsers
 	if err := context.ShouldBindJSON(&subUser); err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
+		respondBadRequest(context, ErrRequestDataParse)
 		return
 	}
 
 	sanitizeSubUserPayload(&subUser)
 	if status, message := validateSubUser(&subUser); status != 0 {
-		context.JSON(status, gin.H{"data": nil, "message": message})
+		respondWithError(context, status, message)
 		return
 	}
 
 	if err := subUser.Save(userId); err != nil {
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not create sub user. Try again later"})
+		respondInternalServerErrorWithData(context, ErrCreateSubUser)
 		return
 	}
 
-	context.JSON(http.StatusCreated, gin.H{"data": subUser})
+	respondWithData(context, http.StatusCreated, subUser)
 }
 
 func getSubUserByUser(context *gin.Context) {
-	userId, ok := requireSameUser(context, "id")
-	if !ok {
+	userId := extractAndVerifyUserID(context)
+	if userId == 0 {
 		return
 	}
 
 	if _, err := models.GetUserById(userId); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			context.JSON(http.StatusNotFound, gin.H{"data": nil, "message": "User not found"})
+			respondNotFound(context, ErrUserNotFound)
 			return
 		}
 
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch user"})
+		respondInternalServerErrorWithData(context, ErrFetchUser)
 		return
 	}
 
 	subUsers, err := models.GetSubUserByUser(userId)
 	if err != nil {
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch sub users"})
+		respondInternalServerErrorWithData(context, ErrFetchSubUsers)
 		return
 	}
 
 	if len(subUsers) == 0 {
-		context.JSON(http.StatusOK, gin.H{"data": nil})
+		respondWithData(context, http.StatusOK, nil)
 		return
 	}
 
-	context.JSON(http.StatusOK, gin.H{"data": subUsers})
+	respondWithData(context, http.StatusOK, subUsers)
 }
 
 func login(context *gin.Context) {
 	var user models.Users
 	if err := context.ShouldBindJSON(&user); err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"data": nil, "message": "Could not parse request data"})
+		respondBadRequest(context, ErrRequestDataParse)
 		return
 	}
 
@@ -297,24 +274,24 @@ func login(context *gin.Context) {
 
 	if err := user.ValidateCredentials(); err != nil {
 		if errors.Is(err, models.ErrInvalidCredentials) {
-			context.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password"})
+			respondWithError(context, http.StatusUnauthorized, ErrInvalidCredentials)
 			return
 		}
 
 		if errors.Is(err, models.ErrEmailNotVerified) {
-			context.JSON(http.StatusForbidden, gin.H{"message": "Please verify your email before logging in"})
+			respondWithError(context, http.StatusForbidden, ErrEmailNotVerified)
 			return
 		}
 
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not authenticate user."})
+		respondInternalServerError(context, ErrAuthUser)
 		return
 	}
 
 	token, err := utils.GenerateToken(user.Email, user.UserId)
 	if err != nil {
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not authenticate user."})
+		respondInternalServerError(context, ErrAuthUser)
 		return
 	}
 
@@ -324,70 +301,58 @@ func login(context *gin.Context) {
 func logout(context *gin.Context) {
 	tokenValue, ok := context.Get("token")
 	if !ok {
-		context.JSON(http.StatusUnauthorized, gin.H{"message": "Not Authorized"})
+		respondUnauthorized(context)
 		return
 	}
 
 	expiresValue, ok := context.Get("tokenExpiresAt")
 	if !ok {
-		context.JSON(http.StatusUnauthorized, gin.H{"message": "Not Authorized"})
+		respondUnauthorized(context)
 		return
 	}
 
 	sanitizedToken, ok := tokenValue.(string)
 	if !ok || sanitizedToken == "" {
-		context.JSON(http.StatusUnauthorized, gin.H{"message": "Not Authorized"})
+		respondUnauthorized(context)
 		return
 	}
 
 	expiresAt, ok := expiresValue.(time.Time)
 	if !ok {
-		context.JSON(http.StatusUnauthorized, gin.H{"message": "Not Authorized"})
+		respondUnauthorized(context)
 		return
 	}
 
 	if err := models.RevokeToken(sanitizedToken, expiresAt); err != nil {
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not log out"})
+		respondInternalServerError(context, ErrLogOut)
 		return
 	}
 
-	context.JSON(http.StatusOK, gin.H{"message": "Logout successful"})
-}
-
-func sanitizeUserPayload(user *models.Users) {
-	user.UserName = strings.TrimSpace(user.UserName)
-	user.Email = strings.ToLower(strings.TrimSpace(user.Email))
-	user.Mobile = strings.TrimSpace(user.Mobile)
-	user.CountryCode = strings.TrimSpace(user.CountryCode)
-	user.Password = strings.TrimSpace(user.Password)
-}
-
-func sanitizeSubUserPayload(subUser *models.SubUsers) {
-	subUser.Name = strings.TrimSpace(subUser.Name)
+	respondWithMessage(context, http.StatusOK, "Logout successful")
 }
 
 func sendVerification(user *models.Users) error {
-	code, err := utils.GenerateNumericCode(verificationCodeLength)
+	code, err := utils.GenerateNumericCode(VerificationCodeLength)
 	if err != nil {
 		return err
 	}
 
-	expiresAt := time.Now().Add(verificationCodeTTL)
+	expiresAt := time.Now().Add(VerificationCodeTTL)
 	if err := models.CreateEmailVerification(user.UserId, code, expiresAt); err != nil {
 		return err
 	}
 
-	return utils.SendVerificationEmail(user.Email, code, verificationCodeTTL)
+	return utils.SendVerificationEmail(user.Email, code, VerificationCodeTTL)
 }
 
 func sendPasswordReset(user *models.Users) error {
-	token, err := utils.GenerateRandomToken(passwordResetTokenSize)
+	token, err := utils.GenerateRandomToken(PasswordResetTokenSize)
 	if err != nil {
 		return err
 	}
 
-	expiresAt := time.Now().Add(passwordResetTokenTTL)
+	expiresAt := time.Now().Add(PasswordResetTokenTTL)
 	if err := models.CreatePasswordReset(user.UserId, token, expiresAt); err != nil {
 		return err
 	}
@@ -445,61 +410,72 @@ func extractEmail(context *gin.Context) (string, error) {
 
 func applicationBaseURL() string {
 	baseURL := strings.TrimSpace(os.Getenv("APP_BASE_URL"))
+
 	if baseURL == "" {
 		if gin.Mode() == gin.ReleaseMode {
 			baseURL = "https://api.devmarvs.com"
 		} else {
 			baseURL = "http://localhost:8080"
 		}
+		return baseURL
 	}
 
 	if gin.Mode() == gin.ReleaseMode && strings.Contains(baseURL, "localhost") {
-		baseURL = "https://api.devmarvs.com"
+		return "https://api.devmarvs.com"
 	}
 
 	return strings.TrimRight(baseURL, "/")
 }
 
+func handleEmailError(context *gin.Context, err error, defaultMessage string) {
+	context.Error(err)
+	message := defaultMessage
+	if errors.Is(err, utils.ErrMissingSMTPConfig) {
+		message = ErrEmailServiceConfig
+	}
+	respondInternalServerError(context, message)
+}
+
 func verifyUserEmail(context *gin.Context) {
 	email, code, err := extractVerificationPayload(context)
 	if err != nil {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Could not parse request data"})
+		respondBadRequest(context, ErrRequestDataParse)
 		return
 	}
 
 	if email == "" || code == "" {
-		context.JSON(http.StatusBadRequest, gin.H{"message": "Email and verification code are required"})
+		respondBadRequest(context, ErrVerificationCodeRequired)
 		return
 	}
 
 	user, err := models.GetUserByEmail(email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			context.JSON(http.StatusBadRequest, gin.H{"message": "Invalid verification code"})
+			respondBadRequest(context, ErrInvalidVerificationCode)
 			return
 		}
 
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not verify email"})
+		respondInternalServerError(context, ErrVerifyEmail)
 		return
 	}
 
 	if user.IsActive {
-		context.JSON(http.StatusConflict, gin.H{"message": "Account already verified"})
+		respondWithError(context, http.StatusConflict, ErrAccountAlreadyVerified)
 		return
 	}
 
 	if err := models.VerifyEmailCode(user.UserId, code); err != nil {
 		switch {
 		case errors.Is(err, models.ErrVerificationAlreadyUsed):
-			context.JSON(http.StatusConflict, gin.H{"message": "Verification code already used"})
+			respondWithError(context, http.StatusConflict, ErrVerificationCodeUsed)
 		case errors.Is(err, models.ErrVerificationCodeExpired):
-			context.JSON(http.StatusBadRequest, gin.H{"message": "Verification code has expired"})
+			respondBadRequest(context, ErrVerificationCodeExpired)
 		case errors.Is(err, models.ErrVerificationCodeInvalid):
-			context.JSON(http.StatusBadRequest, gin.H{"message": "Invalid verification code"})
+			respondBadRequest(context, ErrInvalidVerificationCode)
 		default:
 			context.Error(err)
-			context.JSON(http.StatusInternalServerError, gin.H{"message": "Could not verify email"})
+			respondInternalServerError(context, ErrVerifyEmail)
 		}
 		return
 	}
@@ -507,37 +483,13 @@ func verifyUserEmail(context *gin.Context) {
 	context.JSON(http.StatusOK, gin.H{"message": "Email verified successfully. You can now log in."})
 }
 
-func validateNewUser(user *models.Users) (int, string) {
-	if user.Email == "" {
-		return http.StatusBadRequest, "Email is required"
-	}
-
-	if len(user.Password) < minPasswordLength {
-		return http.StatusBadRequest, "Password must be at least 8 characters long"
-	}
-
-	return 0, ""
-}
-
-func validateSubUser(subUser *models.SubUsers) (int, string) {
-	if subUser.Name == "" {
-		return http.StatusBadRequest, "Sub user name is required"
-	}
-
-	if subUser.UserTypeId <= 0 {
-		return http.StatusBadRequest, "Invalid sub user type"
-	}
-
-	return 0, ""
-}
-
 func listUserTypes(context *gin.Context) {
 	userTypes, err := models.ListUserTypes()
 	if err != nil {
 		context.Error(err)
-		context.JSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Could not fetch user types"})
+		respondInternalServerErrorWithData(context, ErrFetchUserTypes)
 		return
 	}
 
-	context.JSON(http.StatusOK, gin.H{"data": userTypes})
+	respondWithData(context, http.StatusOK, userTypes)
 }
