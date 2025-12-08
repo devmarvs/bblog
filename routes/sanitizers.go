@@ -22,3 +22,8 @@ func sanitizeUserLog(userLog *models.UserLog) {
 	userLog.LogDescription = strings.TrimSpace(userLog.LogDescription)
 	userLog.LogTime = strings.TrimSpace(userLog.LogTime)
 }
+
+func sanitizeAppVersion(version *models.AppVersion) {
+	version.APIVersion = strings.TrimSpace(version.APIVersion)
+	version.MobileVersion = strings.TrimSpace(version.MobileVersion)
+}

@@ -34,6 +34,7 @@ bblog is a REST API for logging baby (or pet) activities. It lets a primary user
    docker compose up --build
    ```
    Ensure `.env` points to a reachable PostgreSQL database. The migrate logic in `db.InitDb()` creates the `bblog` schema and seeds lookup tables on boot.
+   If you manage migrations manually, apply `migrations/0001_create_app_versions.sql` to add the `app_versions` table.
 
 ## API Overview
 Base path: `http://localhost:8080/bblog`
@@ -58,6 +59,8 @@ Base path: `http://localhost:8080/bblog`
 | GET    | `/user/types`                                  | Yes  | List supported user types        |
 | GET    | `/log/types`                                   | Yes  | List supported log categories    |
 | POST   | `/logout`                                      | Yes  | Revoke the current JWT           |
+| GET    | `/version`                                     | No   | Fetch latest API/mobile version  |
+| POST   | `/version`                                     | Yes  | Store a new API/mobile version   |
 
 ### Authentication
 Add an `Authorization: Bearer <jwt>` header to any endpoint marked with **Auth = Yes**. Tokens expire two hours after issuance. Calling `/bblog/logout` revokes the presented token immediately so it cannot be reused even if time remains.
@@ -274,6 +277,59 @@ Authorization: Bearer <jwt>
 ```
 
 Call `/bblog/login` again to obtain a fresh token when needed.
+
+---
+
+### POST `/bblog/version` _(requires auth)_
+Persist the current API and mobile app versions. Use this to let clients check compatibility or prompt updates.
+
+```http
+POST /bblog/version
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "api_version": "1.2.3",
+  "mobile_version": "2.3.4"
+}
+```
+
+**201 Created**
+```json
+{
+  "data": {
+    "version_id": 7,
+    "api_version": "1.2.3",
+    "mobile_version": "2.3.4",
+    "created_ts": "2025-01-05T10:00:00Z"
+  },
+  "message": "Version saved successfully"
+}
+```
+
+- `400 Bad Request`: missing `api_version` or `mobile_version`.
+- `500 Internal Server Error`: failure while saving.
+
+---
+
+### GET `/bblog/version`
+Return the most recently saved version entry. If none exists, `data` is `null`.
+
+```http
+GET /bblog/version
+```
+
+**200 OK**
+```json
+{
+  "data": {
+    "version_id": 7,
+    "api_version": "1.2.3",
+    "mobile_version": "2.3.4",
+    "created_ts": "2025-01-05T10:00:00Z"
+  }
+}
+```
 
 ---
 

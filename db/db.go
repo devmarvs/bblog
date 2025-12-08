@@ -240,4 +240,18 @@ func createTables() {
 	if _, err = DB.Exec(createPasswordResetTable); err != nil {
 		log.Fatalf("Error creating password reset table: %v", err)
 	}
+
+	createAppVersionsTable := `
+		CREATE TABLE IF NOT EXISTS bblog.app_versions (
+			version_id BIGSERIAL PRIMARY KEY,
+			api_version VARCHAR NOT NULL,
+			mobile_version VARCHAR NOT NULL,
+			created_ts TIMESTAMPTZ DEFAULT NOW()
+		);
+		CREATE INDEX IF NOT EXISTS app_versions_created_idx ON bblog.app_versions (created_ts DESC, version_id DESC);
+	`
+
+	if _, err = DB.Exec(createAppVersionsTable); err != nil {
+		log.Fatalf("Error creating app_versions table: %v", err)
+	}
 }

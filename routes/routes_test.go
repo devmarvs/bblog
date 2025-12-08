@@ -389,3 +389,49 @@ func TestListLogTypes_WithAuth(t *testing.T) {
 		t.Fatalf("unmet sql expectations: %v", err)
 	}
 }
+
+func TestCreateAppVersion_WithAuth(t *testing.T) {
+	router, mock := setupRouter(t)
+	stubAuthAllow(t)
+
+	mock.ExpectQuery(`INSERT INTO bblog\.app_versions`).
+		WithArgs("1.2.3", "2.3.4").
+		WillReturnRows(sqlmock.NewRows([]string{"version_id", "created_ts"}).
+			AddRow(int64(1), time.Now().Format(time.RFC3339)))
+
+	req := httptest.NewRequest(http.MethodPost, "/bblog/version", bytes.NewBufferString(`{"api_version":"1.2.3","mobile_version":"2.3.4"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer test-token")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected status 201, got %d, body: %s", w.Code, w.Body.String())
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestGetLatestAppVersion_Public(t *testing.T) {
+	router, mock := setupRouter(t)
+
+	mock.ExpectQuery(`SELECT version_id, api_version, mobile_version, created_ts FROM bblog\.app_versions`).
+		WillReturnRows(sqlmock.NewRows([]string{"version_id", "api_version", "mobile_version", "created_ts"}).
+			AddRow(int64(2), "1.0.0", "2.0.0", time.Now().Format(time.RFC3339)))
+
+	req := httptest.NewRequest(http.MethodGet, "/bblog/version", nil)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body: %s", w.Code, w.Body.String())
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}

@@ -19,6 +19,7 @@ func RegisterRoutes(server *gin.Engine) {
 		api.GET("/user/types", listUserTypes)
 		api.GET("/log/types", listLogTypes)
 		api.POST("/logout", logout)
+		api.POST("/version", createAppVersion)
 	}
 
 	// Public endpoints
@@ -28,6 +29,7 @@ func RegisterRoutes(server *gin.Engine) {
 		public.POST("/user/forgot-password", forgotPassword)
 		public.POST("/user/reset-password", resetPassword)
 		public.POST("/login", login)
+		public.GET("/version", getLatestAppVersion)
 
 		// Verification routes
 		registerVerificationRoutes(public)

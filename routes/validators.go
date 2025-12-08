@@ -41,3 +41,11 @@ func validateUserLog(userLog *models.UserLog) (int, string) {
 
 	return 0, ""
 }
+
+func validateAppVersion(version *models.AppVersion) (int, string) {
+	if version.APIVersion == "" || version.MobileVersion == "" {
+		return http.StatusBadRequest, ErrVersionValuesRequired
+	}
+
+	return 0, ""
+}
