@@ -119,6 +119,8 @@ func resetPassword(context *gin.Context) {
 }
 
 func resendVerificationEmail(context *gin.Context) {
+	const genericMessage = "If the account exists, a verification code has been sent"
+
 	email, err := extractEmail(context)
 	if err != nil {
 		respondBadRequest(context, ErrRequestDataParse)
@@ -133,7 +135,7 @@ func resendVerificationEmail(context *gin.Context) {
 	user, err := models.GetUserByEmail(email)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			context.JSON(http.StatusOK, gin.H{"message": "If the account exists, a verification code has been sent"})
+			context.JSON(http.StatusOK, gin.H{"message": genericMessage})
 			return
 		}
 
@@ -143,7 +145,19 @@ func resendVerificationEmail(context *gin.Context) {
 	}
 
 	if user.IsActive {
-		respondBadRequest(context, ErrAccountAlreadyVerified)
+		context.JSON(http.StatusOK, gin.H{"message": genericMessage})
+		return
+	}
+
+	allowed, err := models.CanSendEmailVerification(user.UserId, VerificationResendCooldown)
+	if err != nil {
+		context.Error(err)
+		respondInternalServerError(context, ErrResendVerification)
+		return
+	}
+
+	if !allowed {
+		respondWithError(context, http.StatusTooManyRequests, ErrVerificationResendTooSoon)
 		return
 	}
 
@@ -152,23 +166,33 @@ func resendVerificationEmail(context *gin.Context) {
 		return
 	}
 
-	context.JSON(http.StatusOK, gin.H{"message": "Verification code sent"})
+	context.JSON(http.StatusOK, gin.H{"message": genericMessage})
+}
+
+func verificationEmailMethodNotAllowed(context *gin.Context) {
+	respondWithError(context, http.StatusMethodNotAllowed, "Use POST to request a verification email")
 }
 
 func getUsers(context *gin.Context) {
-	users, err := models.GetUsers()
+	authenticatedUserID, ok := getAuthenticatedUserID(context)
+	if !ok {
+		respondUnauthorized(context)
+		return
+	}
+
+	user, err := models.GetUserById(authenticatedUserID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondNotFound(context, ErrUserNotFound)
+			return
+		}
+
 		context.Error(err)
 		respondInternalServerError(context, ErrFetchUsers)
 		return
 	}
 
-	if len(users) == 0 {
-		respondWithData(context, http.StatusOK, nil)
-		return
-	}
-
-	respondWithData(context, http.StatusOK, users)
+	respondWithData(context, http.StatusOK, []models.Users{*user})
 }
 
 func getUserById(context *gin.Context) {
@@ -471,6 +495,8 @@ func verifyUserEmail(context *gin.Context) {
 			respondWithError(context, http.StatusConflict, ErrVerificationCodeUsed)
 		case errors.Is(err, models.ErrVerificationCodeExpired):
 			respondBadRequest(context, ErrVerificationCodeExpired)
+		case errors.Is(err, models.ErrVerificationTooManyAttempts):
+			respondWithError(context, http.StatusTooManyRequests, ErrVerificationTooManyAttempts)
 		case errors.Is(err, models.ErrVerificationCodeInvalid):
 			respondBadRequest(context, ErrInvalidVerificationCode)
 		default:

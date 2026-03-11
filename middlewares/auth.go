@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/devmarvs/bblog/models"
 	"github.com/devmarvs/bblog/utils"
@@ -11,10 +12,15 @@ import (
 var (
 	verifyTokenFunc    = utils.VerifyToken
 	isTokenRevokedFunc = models.IsTokenRevoked
+	isTokenCurrentFunc = models.IsTokenCurrentForUser
 )
 
 // SetAuthDependencies overrides auth helpers (used in tests).
-func SetAuthDependencies(verify func(string) (*utils.TokenDetails, error), isRevoked func(string) (bool, error)) {
+func SetAuthDependencies(
+	verify func(string) (*utils.TokenDetails, error),
+	isRevoked func(string) (bool, error),
+	isCurrent func(int64, time.Time) (bool, error),
+) {
 	if verify != nil {
 		verifyTokenFunc = verify
 	} else {
@@ -25,6 +31,12 @@ func SetAuthDependencies(verify func(string) (*utils.TokenDetails, error), isRev
 		isTokenRevokedFunc = isRevoked
 	} else {
 		isTokenRevokedFunc = models.IsTokenRevoked
+	}
+
+	if isCurrent != nil {
+		isTokenCurrentFunc = isCurrent
+	} else {
+		isTokenCurrentFunc = models.IsTokenCurrentForUser
 	}
 }
 
@@ -49,6 +61,17 @@ func Authenticate(context *gin.Context) {
 	}
 
 	if isRevoked {
+		context.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
+		return
+	}
+
+	isCurrent, err := isTokenCurrentFunc(tokenDetails.UserID, tokenDetails.IssuedAt)
+	if err != nil {
+		context.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"data": nil, "message": "Unable to authenticate request"})
+		return
+	}
+
+	if !isCurrent {
 		context.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"data": nil, "message": "Not Authorized"})
 		return
 	}

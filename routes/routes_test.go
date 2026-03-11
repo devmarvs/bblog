@@ -53,13 +53,15 @@ func stubAuthAllow(t *testing.T) {
 				UserID:    1,
 				Token:     token,
 				ExpiresAt: time.Now().Add(time.Hour),
+				IssuedAt:  time.Now(),
 			}, nil
 		},
 		func(string) (bool, error) { return false, nil },
+		func(int64, time.Time) (bool, error) { return true, nil },
 	)
 
 	t.Cleanup(func() {
-		middlewares.SetAuthDependencies(nil, nil)
+		middlewares.SetAuthDependencies(nil, nil, nil)
 	})
 }
 
@@ -137,6 +139,10 @@ func TestResendVerification_Success(t *testing.T) {
 			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
 		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, false, false, false))
 
+	mock.ExpectQuery(`SELECT last_sent_at FROM bblog\.email_verifications WHERE user_id = \$1`).
+		WithArgs(int64(1)).
+		WillReturnError(sql.ErrNoRows)
+
 	mock.ExpectExec(`INSERT INTO bblog\.email_verifications`).
 		WithArgs(int64(1), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -166,6 +172,10 @@ func TestVerifyEmailEndpoint_Post_Success(t *testing.T) {
 			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
 		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, false, false, false))
 
+	mock.ExpectQuery(`SELECT last_sent_at FROM bblog\.email_verifications WHERE user_id = \$1`).
+		WithArgs(int64(1)).
+		WillReturnError(sql.ErrNoRows)
+
 	mock.ExpectExec(`INSERT INTO bblog\.email_verifications`).
 		WithArgs(int64(1), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -186,26 +196,16 @@ func TestVerifyEmailEndpoint_Post_Success(t *testing.T) {
 	}
 }
 
-func TestVerifyEmailEndpoint_Get_Success(t *testing.T) {
+func TestVerifyEmailEndpoint_Get_NotAllowed(t *testing.T) {
 	router, mock := setupRouter(t)
-
-	mock.ExpectQuery(`(?s)SELECT\s+user_id.*FROM\s+bblog\.users\s+WHERE email = \$1`).
-		WithArgs("parent@example.com").
-		WillReturnRows(sqlmock.NewRows([]string{
-			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
-		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, false, false, false))
-
-	mock.ExpectExec(`INSERT INTO bblog\.email_verifications`).
-		WithArgs(int64(1), sqlmock.AnyArg(), sqlmock.AnyArg()).
-		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	req := httptest.NewRequest(http.MethodGet, "/bblog/user/verify-email?email=parent@example.com", nil)
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d, body: %s", w.Code, w.Body.String())
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status 405, got %d, body: %s", w.Code, w.Body.String())
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -221,6 +221,10 @@ func TestVerifyEmailEndpoint_AliasWithoutPrefix(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
 		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, false, false, false))
+
+	mock.ExpectQuery(`SELECT last_sent_at FROM bblog\.email_verifications WHERE user_id = \$1`).
+		WithArgs(int64(1)).
+		WillReturnError(sql.ErrNoRows)
 
 	mock.ExpectExec(`INSERT INTO bblog\.email_verifications`).
 		WithArgs(int64(1), sqlmock.AnyArg(), sqlmock.AnyArg()).
@@ -252,10 +256,10 @@ func TestVerifyUserEmail_WithCode(t *testing.T) {
 			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
 		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, false, false, false))
 
-	mock.ExpectQuery(`SELECT token_hash, expires_at, consumed_at FROM bblog\.email_verifications WHERE user_id = \$1`).
+	mock.ExpectQuery(`SELECT token_hash, expires_at, consumed_at, attempt_count FROM bblog\.email_verifications WHERE user_id = \$1`).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"token_hash", "expires_at", "consumed_at"}).
-			AddRow(hex.EncodeToString(hashed[:]), time.Now().Add(2*time.Minute), nil))
+		WillReturnRows(sqlmock.NewRows([]string{"token_hash", "expires_at", "consumed_at", "attempt_count"}).
+			AddRow(hex.EncodeToString(hashed[:]), time.Now().Add(2*time.Minute), nil, 0))
 
 	mock.ExpectExec(`UPDATE bblog\.email_verifications`).
 		WithArgs(int64(1)).
@@ -273,6 +277,41 @@ func TestVerifyUserEmail_WithCode(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d, body: %s", w.Code, w.Body.String())
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestVerifyUserEmail_TooManyAttempts(t *testing.T) {
+	router, mock := setupRouter(t)
+
+	hashed := sha256.Sum256([]byte("654321"))
+
+	mock.ExpectQuery(`(?s)SELECT\s+user_id.*FROM\s+bblog\.users\s+WHERE email = \$1`).
+		WithArgs("parent@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
+		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, false, false, false))
+
+	mock.ExpectQuery(`SELECT token_hash, expires_at, consumed_at, attempt_count FROM bblog\.email_verifications WHERE user_id = \$1`).
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"token_hash", "expires_at", "consumed_at", "attempt_count"}).
+			AddRow(hex.EncodeToString(hashed[:]), time.Now().Add(2*time.Minute), nil, 4))
+
+	mock.ExpectQuery(`UPDATE bblog\.email_verifications SET attempt_count = attempt_count \+ 1 WHERE user_id = \$1 RETURNING attempt_count`).
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"attempt_count"}).AddRow(5))
+
+	req := httptest.NewRequest(http.MethodPost, "/bblog/user/verify", bytes.NewBufferString(`{"email":"parent@example.com","code":"123456"}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %d, body: %s", w.Code, w.Body.String())
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -302,6 +341,35 @@ func TestForgotPassword_Success(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d, body: %s", w.Code, w.Body.String())
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestResendVerification_RateLimited(t *testing.T) {
+	router, mock := setupRouter(t)
+
+	mock.ExpectQuery(`(?s)SELECT\s+user_id.*FROM\s+bblog\.users\s+WHERE email = \$1`).
+		WithArgs("parent@example.com").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
+		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, false, false, false))
+
+	mock.ExpectQuery(`SELECT last_sent_at FROM bblog\.email_verifications WHERE user_id = \$1`).
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"last_sent_at"}).AddRow(time.Now()))
+
+	payload := `{"email":"parent@example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/bblog/user/resend-verification", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %d, body: %s", w.Code, w.Body.String())
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -363,6 +431,61 @@ func TestListUserTypes_WithAuth(t *testing.T) {
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestGetUsers_ReturnsCurrentUserOnly(t *testing.T) {
+	router, mock := setupRouter(t)
+	stubAuthAllow(t)
+
+	mock.ExpectQuery(`(?s)SELECT\s+user_id.*FROM\s+bblog\.users\s+WHERE user_id = \$1`).
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"user_id", "username", "created_ts", "user_type_id", "email", "mobile", "country_code", "is_online", "is_active", "is_deleted", "is_premium",
+		}).AddRow(int64(1), "parent", time.Now().Format(time.RFC3339), int64(1), "parent@example.com", "+123456789", "US", false, true, false, false))
+
+	req := httptest.NewRequest(http.MethodGet, "/bblog/user/all", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d, body: %s", w.Code, w.Body.String())
+	}
+
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}
+
+func TestProtectedRoute_RejectsInvalidatedToken(t *testing.T) {
+	router, _ := setupRouter(t)
+
+	middlewares.SetAuthDependencies(
+		func(token string) (*utils.TokenDetails, error) {
+			return &utils.TokenDetails{
+				UserID:    1,
+				Token:     token,
+				ExpiresAt: time.Now().Add(time.Hour),
+				IssuedAt:  time.Now().Add(-time.Hour),
+			}, nil
+		},
+		func(string) (bool, error) { return false, nil },
+		func(int64, time.Time) (bool, error) { return false, nil },
+	)
+	t.Cleanup(func() {
+		middlewares.SetAuthDependencies(nil, nil, nil)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/bblog/user/types", nil)
+	req.Header.Set("Authorization", "Bearer old-token")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401, got %d, body: %s", w.Code, w.Body.String())
 	}
 }
 

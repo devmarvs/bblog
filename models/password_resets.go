@@ -80,6 +80,7 @@ func ResetPassword(token string, newPassword string) error {
 	const updateUserPassword = `
         UPDATE bblog.users
         SET password = $1,
+            token_valid_after = NOW(),
             updated_ts = NOW()
         WHERE user_id = $2
     `

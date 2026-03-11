@@ -45,7 +45,7 @@ func RegisterRoutes(server *gin.Engine) {
 func registerVerificationRoutes(group *gin.RouterGroup) {
 	group.POST("/user/verify-email", resendVerificationEmail)
 	group.POST("/user/verify-email/request", resendVerificationEmail)
-	group.GET("/user/verify-email", resendVerificationEmail)
+	group.GET("/user/verify-email", verificationEmailMethodNotAllowed)
 	group.POST("/user/resend-verification", resendVerificationEmail)
 	group.GET("/user/verify", verifyUserEmail)
 	group.POST("/user/verify", verifyUserEmail)

@@ -23,13 +23,17 @@ type TokenDetails struct {
 	UserID    int64
 	Token     string
 	ExpiresAt time.Time
+	IssuedAt  time.Time
 }
 
 func GenerateToken(email string, userId int64) (string, error) {
+	issuedAt := time.Now().UTC()
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"email":  email,
 		"userId": userId,
-		"exp":    time.Now().Add(time.Hour * 2).Unix(),
+		"iat":    issuedAt.Unix(),
+		"exp":    issuedAt.Add(2 * time.Hour).Unix(),
 	})
 
 	key, err := getSecretKey()
@@ -76,6 +80,11 @@ func VerifyToken(token string) (*TokenDetails, error) {
 		return nil, errors.New("Invalid token claims.")
 	}
 
+	issuedAt, err := claims.GetIssuedAt()
+	if err != nil || issuedAt == nil {
+		return nil, errors.New("Invalid token claims.")
+	}
+
 	if time.Now().After(expiration.Time) {
 		return nil, errors.New("Invalid token.")
 	}
@@ -94,6 +103,7 @@ func VerifyToken(token string) (*TokenDetails, error) {
 		UserID:    userId,
 		Token:     sanitizedToken,
 		ExpiresAt: expiration.Time,
+		IssuedAt:  issuedAt.Time,
 	}, nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq" // Import the pq driver
@@ -25,7 +26,15 @@ func InitDb() {
 	dbUser := os.Getenv("DB_USER")
 	dbPass := os.Getenv("DB_PWORD")
 	dbName := os.Getenv("DB_NAME")
-	connString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable", dbHost, dbPort, dbUser, dbPass, dbName)
+	connString := fmt.Sprintf(
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		dbHost,
+		dbPort,
+		dbUser,
+		dbPass,
+		dbName,
+		databaseSSLMode(dbHost),
+	)
 
 	// Open connection to PostgreSQL
 	DB, err = sql.Open("postgres", connString)
@@ -40,6 +49,22 @@ func InitDb() {
 	createSchema()
 	createTables()
 
+}
+
+func databaseSSLMode(host string) string {
+	if sslMode := strings.TrimSpace(os.Getenv("DB_SSLMODE")); sslMode != "" {
+		return sslMode
+	}
+
+	normalizedHost := strings.ToLower(strings.TrimSpace(host))
+	switch {
+	case normalizedHost == "", normalizedHost == "localhost", normalizedHost == "::1":
+		return "disable"
+	case strings.HasPrefix(normalizedHost, "127."):
+		return "disable"
+	default:
+		return "require"
+	}
 }
 
 func createSchema() {
@@ -59,6 +84,7 @@ func createTables() {
 			user_id BIGSERIAL PRIMARY KEY,
 			created_ts TIMESTAMPTZ NULL DEFAULT NOW(),
 			updated_ts TIMESTAMPTZ NULL,
+			token_valid_after TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			user_type_id INTEGER NULL,
 			username VARCHAR NULL,
 			password VARCHAR NOT NULL,
@@ -78,6 +104,25 @@ func createTables() {
 	if err != nil {
 		log.Fatalf("Error creating schema: %v", err) // Log the real error
 
+	}
+
+	ensureUsersTokenValidityColumn := `
+		ALTER TABLE bblog.users
+		ADD COLUMN IF NOT EXISTS token_valid_after TIMESTAMPTZ;
+
+		UPDATE bblog.users
+		SET token_valid_after = COALESCE(token_valid_after, created_ts, NOW())
+		WHERE token_valid_after IS NULL;
+
+		ALTER TABLE bblog.users
+		ALTER COLUMN token_valid_after SET DEFAULT NOW();
+
+		ALTER TABLE bblog.users
+		ALTER COLUMN token_valid_after SET NOT NULL;
+	`
+
+	if _, err = DB.Exec(ensureUsersTokenValidityColumn); err != nil {
+		log.Fatalf("Error ensuring token validity column: %v", err)
 	}
 
 	// if err != nil {
@@ -219,12 +264,36 @@ func createTables() {
 			token_hash VARCHAR NOT NULL,
 			expires_at TIMESTAMPTZ NOT NULL,
 			consumed_at TIMESTAMPTZ NULL,
+			attempt_count INTEGER NOT NULL DEFAULT 0,
+			last_sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 			created_ts TIMESTAMPTZ DEFAULT NOW()
 		);
 	`
 
 	if _, err = DB.Exec(createEmailVerificationTable); err != nil {
 		log.Fatalf("Error creating email verification table: %v", err)
+	}
+
+	ensureEmailVerificationSecurityColumns := `
+		ALTER TABLE bblog.email_verifications
+		ADD COLUMN IF NOT EXISTS attempt_count INTEGER NOT NULL DEFAULT 0;
+
+		ALTER TABLE bblog.email_verifications
+		ADD COLUMN IF NOT EXISTS last_sent_at TIMESTAMPTZ;
+
+		UPDATE bblog.email_verifications
+		SET last_sent_at = COALESCE(last_sent_at, created_ts, NOW())
+		WHERE last_sent_at IS NULL;
+
+		ALTER TABLE bblog.email_verifications
+		ALTER COLUMN last_sent_at SET DEFAULT NOW();
+
+		ALTER TABLE bblog.email_verifications
+		ALTER COLUMN last_sent_at SET NOT NULL;
+	`
+
+	if _, err = DB.Exec(ensureEmailVerificationSecurityColumns); err != nil {
+		log.Fatalf("Error ensuring email verification security columns: %v", err)
 	}
 
 	createPasswordResetTable := `
